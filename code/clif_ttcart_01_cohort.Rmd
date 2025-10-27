@@ -1,0 +1,671 @@
+---
+title: "01_cohort"
+output: html_notebook
+---
+
+# Cohort script for CLIF project testing temperature trajectories after CAR-T
+## Requires data_list to be loaded/validated from 00_setup
+
+# Cohort identification
+## Inclusion criteria: age >= 18, dates 2018-2024, B-cell malignancy, receipt of CAR-T--------------------
+
+
+hosp_incl <- data_list$hospitalization %>%
+  dplyr::filter(
+    age_at_admission >= 18,
+    !is.na(admission_dttm), !is.na(discharge_dttm),
+    admission_dttm < discharge_dttm
+  ) |>
+  collect() |>
+  filter(admission_dttm <= end_date & start_date <= admission_dttm)
+
+cart_product_incl <- data_list$medication_admin_intermittent %>%
+  dplyr::filter(med_group == "car_t") %>%
+  dplyr::mutate(
+    cart_name = tolower(med_category),
+    cart_group = dplyr::case_when(
+      cart_name == "axicabtagene_ciloleucel"      ~ 1L,
+      cart_name == "brexucabtagene_autoleucel"    ~ 2L,
+      cart_name == "ciltacabtagene_autoleucel"    ~ 3L,
+      cart_name == "idecabtagene_vicleucel"       ~ 4L,
+      cart_name == "lisocabtagene_maraleucel"     ~ 5L,
+      cart_name == "tisagenlecleucel"             ~ 6L,
+      TRUE                                        ~ NA_integer_
+    )
+  ) %>%
+  dplyr::distinct(hospitalization_id, admin_dttm, cart_name, cart_group) |>
+  collect()
+
+dx_incl <- data_list$hospital_diagnosis %>%
+  dplyr::filter(
+    stringr::str_starts(tolower(diagnosis_code), "c82") |  # follicular lymphoma
+    stringr::str_starts(tolower(diagnosis_code), "c83") |  # nonfollicular lymphoma (MCL, DLBCL)
+    stringr::str_starts(tolower(diagnosis_code), "c85") |  # non-Hodgkin lymphoma
+    stringr::str_starts(tolower(diagnosis_code), "c90") |  # multiple myeloma
+    stringr::str_starts(tolower(diagnosis_code), "c91")    # lymphoid leukemia (B-ALL)
+  ) %>%
+  dplyr::mutate(
+    icd_prefix = stringr::str_sub(tolower(diagnosis_code), 1, 3),
+    dx_group = dplyr::case_when(
+      icd_prefix == "c82" ~ 1L,   # follicular lymphoma
+      icd_prefix == "c83" ~ 2L,   # nonfollicular lymphoma
+      icd_prefix == "c85" ~ 3L,   # NHL, MLBCL
+      icd_prefix == "c90" ~ 4L,   # multiple myeloma
+      icd_prefix == "c91" ~ 5L,   # lymphoid leukemia B-ALL
+      TRUE ~ NA_integer_
+    )
+  ) %>%
+  dplyr::select(hospitalization_id, diagnosis_code, dx_group) %>%
+  dplyr::distinct() |>
+  collect()
+  
+dx_incl <-
+dx_incl |>
+left_join(hosp_incl |> fselect(patient_id, hospitalization_id, admission_dttm)) |>
+rename(start_dttm = admission_dttm)
+
+###Sanity check: how many dx_group per patient, if multiple, create summary and keep most recent--------------------
+
+pts_multi_dx <- dx_incl %>%
+  dplyr::group_by(patient_id) %>%
+  dplyr::summarise(n_dx_groups = dplyr::n_distinct(dx_group), .groups = "drop") %>%
+  dplyr::filter(n_dx_groups > 1) 
+
+dx_incl_filter <- dx_incl %>%
+  dplyr::group_by(patient_id) %>%
+  dplyr::arrange(dplyr::desc(start_dttm)) %>%
+  dplyr::slice_head(n = 1) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(patient_id, hospitalization_id, dx_group)
+
+##Filter hospitalization based upon above inclusion criteria--------------------------------------------------------
+hosp_incl_filter <- hosp_incl %>%
+  dplyr::inner_join(
+    dx_incl_filter |> fselect(hospitalization_id, dx_group) |> funique(),
+    by = "hospitalization_id"
+  ) %>%
+  
+  dplyr::inner_join(
+    cart_product_incl, by = "hospitalization_id"
+  ) %>%
+  dplyr::distinct(hospitalization_id, .keep_all = TRUE) %>% #if code not working look here
+  dplyr::arrange(hospitalization_id, admission_dttm)
+
+##Set cart infusion at t0, filter out hospitalizations before cart and after 30 days------------------------------
+
+cart_admin_t0 <- cart_product_incl %>%
+  dplyr::arrange(hospitalization_id, admin_dttm) %>%
+  dplyr::group_by(hospitalization_id) %>%
+  dplyr::slice_head(n = 1) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(cart_t0 = admin_dttm) %>%
+  dplyr::select(hospitalization_id, cart_t0, cart_group)                 
+
+hosp_post_cart <- hosp_incl_filter %>%
+  dplyr::left_join(cart_admin_t0 |> fselect(-cart_group), by = "hospitalization_id") %>%
+  dplyr::filter(
+    !is.na(cart_t0),
+    discharge_dttm >= cart_t0,
+    admission_dttm <= cart_t0 + lubridate::days(30)
+  ) %>%
+  dplyr::mutate(index_admit = cart_t0 >= admission_dttm & cart_t0 <= discharge_dttm,
+  index_discharge_72h = index_admit & (discharge_dttm < cart_t0 + lubridate::hours(72))) %>%
+  dplyr::arrange(patient_id, admission_dttm)
+
+##Exclusion criteria: abnormal temp before cart, death/discharge or missing 72hr of temps---------------------------
+
+hosp_post_cart_excl <- hosp_post_cart %>%
+  dplyr::group_by(patient_id) %>%
+  dplyr::filter(!any(index_discharge_72h, na.rm = TRUE)) %>%
+  dplyr::ungroup()
+
+temp <- data_list$vitals %>%
+  dplyr::filter(vital_category == "temp_c") %>%
+  dplyr::select(hospitalization_id, recorded_dttm, temp_c = vital_value) %>%
+  dplyr::inner_join(
+    hosp_post_cart_excl %>%
+      dplyr::select(patient_id, hospitalization_id, cart_t0, index_admit),
+    by = "hospitalization_id"
+  ) %>%
+  dplyr::filter(index_admit) %>%
+  collect() %>%
+  dplyr::group_by(patient_id, hospitalization_id, cart_t0) %>%
+  dplyr::mutate(
+    pre_norm_temp = any(
+      recorded_dttm >= (cart_t0 - lubridate::hours(12)) &
+      recorded_dttm <  cart_t0 &
+      !is.na(temp_c) &
+      temp_c >= 35 & temp_c < 38,
+      na.rm = TRUE
+    ),
+    post_72h_temp = any(
+      recorded_dttm >= cart_t0 + lubridate::hours(72),
+      na.rm = TRUE
+    ),
+    .groups = "drop"
+  ) %>%
+  dplyr::mutate(temp_pass = pre_norm_temp & post_72h_temp) %>%
+  dplyr::group_by(patient_id) %>%
+  dplyr::summarise(temp_pass = any(temp_pass, na.rm = TRUE), .groups = "drop")
+
+hosp_post_cart_final <- hosp_post_cart_excl %>%
+  dplyr::left_join(
+    temp %>% dplyr::select(patient_id, temp_pass),
+    by = "patient_id"
+  ) %>%
+  dplyr::filter(temp_pass) %>%
+  dplyr::arrange(patient_id, admission_dttm)
+
+##Counts for exclusion flow diagram-------------------------------------------------------------------------------------------
+# 1) n adult patients hospitalized 2018–2024
+n_hosp_total <-
+  hosp_incl %>%
+  dplyr::distinct(patient_id) %>%
+  nrow()
+
+# 2) patients who did not receive cart or did not have a qualifying diagnosis
+n_no_cart <-
+  hosp_incl %>%
+  dplyr::distinct(patient_id) %>%
+  dplyr::anti_join(cart_product_incl %>% inner_join(hosp_incl) |> 
+  fselect(patient_id, hospitalization_id) |> 
+  funique(), dplyr::distinct(patient_id), by = "patient_id") %>%
+  nrow()
+
+n_no_dx <-
+  hosp_incl %>%
+  dplyr::distinct(patient_id) %>%
+  dplyr::anti_join(dx_incl_filter %>% dplyr::distinct(patient_id), by = "patient_id") %>%
+  nrow()
+
+# 3) n patients who were hospitalized AND had CAR-T AND qualifying dx
+n_pts_incl <-
+  hosp_incl_filter %>%
+  dplyr::distinct(patient_id) %>%
+  nrow()
+
+# 4) post-CAR-T exclusions (patient-level)
+n_early_discharge <-
+  hosp_post_cart %>%
+  dplyr::filter(index_admit, index_discharge_72h) %>%
+  dplyr::distinct(patient_id) %>%
+  nrow()
+
+n_index_admit <-
+  hosp_post_cart %>%
+  dplyr::filter(index_admit) %>%
+  dplyr::distinct(patient_id) %>%
+  nrow()
+
+n_index_temp <-
+  temp %>%                      
+  dplyr::filter(temp_pass) %>%
+  dplyr::distinct(patient_id) %>%
+  nrow()
+
+n_temp_fail <- n_index_admit - n_index_temp
+
+# 5) final cohort size (patients who pass all criteria)
+n_final <-
+  hosp_post_cart_final %>%            
+  dplyr::distinct(patient_id) %>%
+  nrow()
+
+n_pts_multi_dx <- nrow(pts_multi_dx)
+
+excl_summary <- tibble::tibble(
+  step = c(
+    "N patients hospitalized 2018–2024",         
+    "N patients who did not receive CAR-T",
+    "N patients without qualifying diagnosis",
+    "N patients with >1 qualifying diagnosis",
+    "N patients meeting all inclusion criteria",
+    "N patients discharged or deceased <72 hours post CAR-T",
+    "N patients without sufficient temp data",
+    "N patients meeting all inclusion and exclusion criteria"
+  ),
+  n = c(
+    n_hosp_total,
+    n_no_cart,
+    n_no_dx,
+    n_pts_multi_dx,
+    n_pts_incl, 
+    n_early_discharge,
+    n_temp_fail,
+    n_final
+  ))
+
+excl_summary_path <- file.path(
+  project_location,
+  "proj_output",
+  paste0("excl_summary_", today, ".csv")
+)
+
+data.table::fwrite(excl_summary, excl_summary_path)
+
+rm(hosp_incl, cart_product_incl, dx_incl, pts_multi_dx, hosp_incl_filter, hosp_post_cart, hosp_post_cart_excl, excl_summary, excl_summary_path, n_hosp_total, n_no_cart, n_no_dx, n_pts_incl, n_early_discharge, n_index_admit, n_index_temp, n_temp_fail, n_final, n_pts_multi_dx)
+
+gc()
+      
+      
+##Assemble cohort that meets inclusion and exclusion criteria-------------------------------------------------------
+##Add demographics
+patient <- data_list$patient %>%
+      dplyr::select(patient_id, race_category, ethnicity_category, sex_category, death_dttm) |>
+      collect()
+
+cohort <- hosp_post_cart_final %>%
+  dplyr::arrange(patient_id, admission_dttm) %>%
+  left_join(patient, by = "patient_id" 
+  ) |>
+select(
+    patient_id, hospitalization_id,
+    admission_dttm, discharge_dttm, cart_t0,
+    age_at_admission, sex_category, race_category, ethnicity_category, death_dttm,
+    dx_group, cart_group, temp_pass
+  )
+
+rm(dx_incl_filter, hosp_post_cart_final)
+
+#Outcomes-----------------------------------------------------------------------------------------------------------
+##Index hospital LOS, readmit within 30 days, death within 30 days, death within 90 days
+
+cohort <- cohort %>%
+  group_by(patient_id) %>%
+  mutate(
+    index_hospital_LOS = if_else(
+      cart_t0 >= admission_dttm & cart_t0 <= discharge_dttm,
+      as.numeric(difftime(discharge_dttm, admission_dttm, units = "days")),
+      NA_real_),
+    death_30d = as.integer(
+      !is.na(death_dttm) &
+      death_dttm >= cart_t0 &
+      death_dttm <= cart_t0 + lubridate::days(30)),
+    death_90d = as.integer(
+      !is.na(death_dttm) &
+      death_dttm >= cart_t0 &
+      death_dttm <= cart_t0 + lubridate::days(90)),
+    readmit_30d = as.integer(dplyr::n_distinct(hospitalization_id) > 1)
+  ) %>%
+  ungroup()
+
+##ICU admission Y/N
+
+icu_flag <- data_list$adt %>%
+  dplyr::filter(tolower(location_category) == "icu") %>%
+  dplyr::select(hospitalization_id, in_dttm) %>%
+  collect() |>
+  inner_join(
+    cohort %>% select(patient_id, hospitalization_id, cart_t0),
+    by = "hospitalization_id"
+  ) %>%
+  filter(
+    !is.na(in_dttm),
+    in_dttm >= cart_t0,
+    in_dttm <= cart_t0 + lubridate::days(30)
+  ) %>%
+  distinct(patient_id) %>%
+  mutate(icu_30d = 1L)
+
+cohort <- cohort %>%
+  dplyr::left_join(icu_flag, by = "patient_id") %>%
+  dplyr::mutate(icu_30d = tidyr::replace_na(icu_30d, 0L))
+
+rm(icu_flag)
+  
+##Respiratory support Y/N
+resp_flag <- data_list$respiratory_support %>%
+  dplyr::filter(tolower(device_category) %in% c("imv", "nippv", "high flow nc")) %>%
+  dplyr::select(hospitalization_id, recorded_dttm) %>%
+  collect() |>
+  dplyr::inner_join(
+    cohort %>% dplyr::select(patient_id, hospitalization_id, cart_t0),
+    by = "hospitalization_id"
+  ) %>%
+  dplyr::filter(
+    !is.na(recorded_dttm),
+    recorded_dttm >= cart_t0,
+    recorded_dttm <= cart_t0 + lubridate::days(30)
+  ) %>%
+  dplyr::distinct(patient_id) %>%
+  dplyr::mutate(resp_30d = 1L)
+
+cohort <- cohort %>%
+  dplyr::left_join(resp_flag, by = "patient_id") %>%
+  dplyr::mutate(resp_30d = tidyr::replace_na(resp_30d, 0L))
+
+rm(resp_flag)
+
+##Vasopressor support Y/N
+vaso_flag <- data_list$medication_admin_continuous %>%
+  dplyr::filter(med_group == "vasoactives") %>% 
+  dplyr::select(hospitalization_id, admin_dttm) %>%
+  collect() |>
+  dplyr::inner_join(
+    cohort %>% dplyr::select(patient_id, hospitalization_id, cart_t0),
+    by = "hospitalization_id"
+  ) %>%
+  dplyr::filter(
+    !is.na(admin_dttm),
+    admin_dttm >= cart_t0,
+    admin_dttm <= cart_t0 + lubridate::days(30)
+  ) %>%
+  dplyr::distinct(patient_id) %>%
+  dplyr::mutate(vaso_30d = 1L)
+
+cohort <- cohort %>%
+  dplyr::left_join(vaso_flag, by = "patient_id") %>%
+  dplyr::mutate(vaso_30d = tidyr::replace_na(vaso_30d, 0L))
+
+rm(vaso_flag)
+
+#Med dosing---------------------------------------------------------------------------------------------------------
+norm_medcat <- function(x) tolower(trimws(x))
+
+##Toci, anakinra, acetaminophen
+###Tocilizumab (time-to-first, total doses within 30d)
+toci <- data_list$medication_admin_intermittent %>%
+  dplyr::filter(med_category == "tocilizumab") %>%
+  dplyr::select(hospitalization_id, admin_dttm) %>%
+  collect() |>
+  dplyr::inner_join(
+    cohort %>% dplyr::select(patient_id, hospitalization_id, cart_t0),
+    by = "hospitalization_id"
+  ) %>%
+  dplyr::filter(
+    !is.na(admin_dttm),
+    admin_dttm >= cart_t0,
+    admin_dttm <= cart_t0 + lubridate::days(30)
+  ) %>%
+  dplyr::group_by(patient_id) %>%
+  dplyr::summarise(
+    toci_first_admin = min(admin_dttm, na.rm = TRUE),
+    toci_n_doses_30d   = dplyr::n(),
+    toci_time_until  = as.numeric(difftime(min(admin_dttm, na.rm = TRUE),
+                                           min(cart_t0, na.rm = TRUE),
+                                           units = "hours")),
+    .groups = "drop"
+  ) %>%
+  dplyr::select(patient_id, toci_time_until, toci_n_doses_30d)
+
+###Anakinra (time-to-first, total doses within 30d)
+anakinra <- data_list$medication_admin_intermittent %>%
+  dplyr::filter(med_category == "anakinra") %>%
+  dplyr::select(hospitalization_id, admin_dttm) %>%
+  dplyr::collect() |>
+  dplyr::inner_join(
+    cohort %>% dplyr::select(patient_id, hospitalization_id, cart_t0),
+    by = "hospitalization_id"
+  ) %>%
+  dplyr::filter(
+    !is.na(admin_dttm),
+    admin_dttm >= cart_t0,
+    admin_dttm <= cart_t0 + lubridate::days(30)
+  ) %>%
+  dplyr::group_by(patient_id) %>%
+  dplyr::summarise(
+    anakinra_first_admin = min(admin_dttm, na.rm = TRUE),
+    anakinra_n_doses_30d   = dplyr::n(),
+    anakinra_time_until  = as.numeric(difftime(min(admin_dttm, na.rm = TRUE),
+                                               min(cart_t0, na.rm = TRUE),
+                                               units = "hours")),
+    .groups = "drop"
+  ) %>%
+  dplyr::select(patient_id, anakinra_time_until, anakinra_n_doses_30d)
+
+###Acetaminophen (total doses, cumulative doses within 72 hours after CART)
+apap <- data_list$medication_admin_intermittent %>%
+collect()
+  dplyr::filter(
+    med_category == "acetaminophen") %>%
+  dplyr::select(hospitalization_id, admin_dttm, med_dose, med_dose_unit) %>%
+  collect() 
+  dplyr::inner_join(
+    cohort %>% dplyr::select(patient_id, hospitalization_id, cart_t0),
+    by = "hospitalization_id") %>%
+  dplyr::filter(
+    !is.na(admin_dttm),
+    admin_dttm >= cart_t0,
+    admin_dttm <= cart_t0 + lubridate::hours(72)) %>%
+  dplyr::group_by(patient_id) %>%
+  dplyr::summarise(
+    apap_n_doses_72h       = dplyr::n(),
+    apap_cum_dose_72h = sum(med_dose, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+cohort <- cohort %>%
+  dplyr::left_join(apap,     by = "patient_id") %>%
+  dplyr::left_join(toci,     by = "patient_id") %>%
+  dplyr::left_join(anakinra, by = "patient_id") %>%
+  dplyr::mutate(
+    toci_n_doses_30d      = tidyr::replace_na(toci_n_doses_30d, 0L),
+    anakinra_n_doses_30d  = tidyr::replace_na(anakinra_n_doses_30d, 0L),
+    apap_n_doses_72h          = tidyr::replace_na(apap_n_doses_72h, 0L),           
+    apap_cum_dose_72h   = tidyr::replace_na(apap_cum_dose_72h, 0)   
+  )
+
+rm(toci, anakinra, apap)
+
+##Steroids
+#This code calculates how many days after cart a patient received steroids at a dose usually used to treat CRS and ICAHNs.
+steroid_map <- tibble::tibble(
+  med_category = c("dexamethasone","betamethasone","methylprednisolone","prednisone","prednisolone","hydrocortisone"),
+  dex_factor   = c(1.0000,        1.2500,         0.1875,              0.1500,      0.1500,       0.0375)
+)
+
+weight <- data_list$vitals %>%
+  dplyr::filter(vital_category == "weight_kg") %>%
+  dplyr::select(hospitalization_id, recorded_dttm, weight_kg = vital_value) %>%
+  collect() |>
+  dplyr::inner_join(
+    cohort %>% dplyr::select(hospitalization_id, admission_dttm),
+    by = "hospitalization_id"
+  ) %>%
+  dplyr::filter(!is.na(recorded_dttm), recorded_dttm >= admission_dttm) %>%
+  dplyr::group_by(hospitalization_id) %>%
+  dplyr::slice_min(order_by = recorded_dttm, with_ties = FALSE) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(hospitalization_id, weight_kg)
+
+steroid_admin <- data_list$medication_admin_intermittent %>%
+  dplyr::filter(
+    !is.na(med_dose),
+    med_category %in% steroid_map$med_category,
+    med_dose_unit %in% c("mg", "mg/kg")
+  ) %>%
+  collect() |>
+  dplyr::mutate(
+    med_dose_unit = dplyr::if_else(med_dose_unit == "mg/kg/day", "mg/kg", med_dose_unit)
+  ) %>%
+
+  dplyr::select(hospitalization_id, admin_dttm, med_category, med_dose, med_dose_unit) %>%
+  dplyr::inner_join(
+    cohort %>% dplyr::select(patient_id, hospitalization_id, cart_t0),
+    by = "hospitalization_id"
+  ) %>%
+  dplyr::filter(
+    !is.na(admin_dttm),
+    admin_dttm >= cart_t0,
+    admin_dttm <= cart_t0 + lubridate::days(30)
+  ) %>%
+  dplyr::left_join(weight, by = "hospitalization_id") %>%
+  dplyr::mutate(
+    steroid_dose_mg = dplyr::if_else(
+      med_dose_unit == "mg", med_dose, med_dose * weight_kg
+    )
+  ) %>%
+  dplyr::filter(!is.na(steroid_dose_mg)) %>%
+  dplyr::select(patient_id, hospitalization_id, admin_dttm, med_category, steroid_dose_mg)
+
+steroid_dex <- steroid_admin %>%
+  dplyr::inner_join(steroid_map, by = "med_category") %>%
+  dplyr::mutate(
+    dex_mg_equivalent = steroid_dose_mg * dex_factor,
+    admin_date        = as.Date(admin_dttm)
+  ) %>%
+  dplyr::group_by(patient_id, hospitalization_id, admin_date) %>%        
+  dplyr::summarise(
+    daily_dex_mg = sum(dex_mg_equivalent, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  dplyr::group_by(patient_id) %>%                                         
+  dplyr::summarise(
+    steroid_days_30d = as.integer(sum(daily_dex_mg >= 10, na.rm = TRUE)),
+    .groups = "drop"
+  )
+
+cohort <- cohort %>%
+  dplyr::left_join(steroid_dex, by = "patient_id") %>%
+  dplyr::mutate(steroid_days_30d = tidyr::replace_na(steroid_days_30d, 0L))
+
+rm(steroid_map, weight, steroid_admin, steroid_dex)
+
+#EASIX severity scores-------------------------------------------------------------------------------------------------------
+
+safe_div  <- function(num, den) ifelse(!is.na(num) & !is.na(den) & den > 0, num / den, NA_real_)
+safe_log2 <- function(x) ifelse(!is.na(x) & x > 0, log2(x), NA_real_)
+
+thr_easix    <- 4.6
+thr_ferritin <- 321   # ng/mL
+thr_crp      <- 21    # mg/L
+
+# 1) Pull labs -12h and +12 from CART
+lab_window <- data_list$labs %>%
+  dplyr::rename(lab_time = lab_result_dttm) %>%
+  dplyr::filter(lab_category %in% c("ldh", "creatinine", "platelet_count", "crp", "ferritin")) %>%
+  collect() |>
+  dplyr::inner_join(
+    cohort %>% dplyr::select(patient_id, hospitalization_id, cart_t0),
+    by = "hospitalization_id"
+  ) %>%
+  dplyr::filter(
+    !is.na(lab_time),
+    lab_time >= cart_t0 - lubridate::hours(12),
+    lab_time <= cart_t0 + lubridate::hours(12)
+  ) %>%
+  dplyr::group_by(hospitalization_id, lab_category) %>%
+  dplyr::arrange(lab_time, .by_group = TRUE) %>%
+  dplyr::slice_head(n = 1) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(hospitalization_id, lab_category, lab_value_numeric)
+
+lab_window_wide <- lab_window %>%
+  tidyr::pivot_wider(names_from = lab_category, values_from = lab_value_numeric)
+  
+# 2) Calculate scores
+scores <- lab_window_wide %>%
+  dplyr::inner_join(
+    cohort %>% dplyr::select(patient_id, hospitalization_id),
+    by = "hospitalization_id"
+  ) %>%
+  dplyr::mutate(
+    easix        = safe_div(creatinine * ldh, platelet_count),
+    m_easix      = safe_div(crp * ldh,        platelet_count),
+    s_easix      = safe_div(ldh,              platelet_count),
+    log2_easix   = safe_log2(easix),
+    log2_m_easix = safe_log2(m_easix),
+    log2_s_easix = safe_log2(s_easix)
+  ) %>%
+  dplyr::select(
+    patient_id,
+    easix, log2_easix,
+    m_easix, log2_m_easix,
+    s_easix, log2_s_easix,
+    ferritin, crp
+  ) %>%
+  dplyr::distinct(patient_id, .keep_all = TRUE) %>%
+  dplyr::mutate(
+    easix_f_cat = dplyr::case_when(
+      !is.na(easix) & easix > thr_easix ~ "High",
+      !is.na(easix) & easix <= thr_easix & !is.na(ferritin) & ferritin > thr_ferritin ~ "Intermediate",
+      !is.na(easix) & easix <= thr_easix & !is.na(ferritin) & ferritin <= thr_ferritin ~ "Low",
+      TRUE ~ NA_character_
+    ),
+    easix_fc_cat = dplyr::case_when(
+      !is.na(ferritin) & ferritin > thr_ferritin ~ "High",
+      !is.na(ferritin) & ferritin <= thr_ferritin &
+        ( (!is.na(easix) & easix > thr_easix) | (!is.na(crp) & crp > thr_crp) ) ~ "Intermediate",
+      !is.na(ferritin) & ferritin <= thr_ferritin &
+        (!is.na(easix) & easix <= thr_easix) &
+        (!is.na(crp)   & crp   <= thr_crp) ~ "Low",
+      TRUE ~ NA_character_
+    ),
+    easix_f_cat  = factor(easix_f_cat,  levels = c("Low","Intermediate","High"), ordered = TRUE),
+    easix_fc_cat = factor(easix_fc_cat, levels = c("Low","Intermediate","High"), ordered = TRUE)
+  )
+
+cohort <- cohort %>%
+  dplyr::left_join(scores, by = "patient_id")
+
+#Positive BCx and receipt of broad-spectrum ABXs-----------------------------------------------------------------------------
+
+blood_cx <- data_list$microbiology_culture %>%
+  dplyr::filter(fluid_category == "blood") %>%
+collect()
+  dplyr::select(hospitalization_id, result_dttm, fluid_category, organism_category) %>%
+  dplyr::inner_join(
+    cohort %>% dplyr::select(patient_id, cart_t0),
+    by = "patient_id"
+  ) %>%
+  dplyr::filter(
+    !is.na(result_dttm),
+    result_dttm >= cart_t0,
+    result_dttm <= cart_t0 + lubridate::days(30)
+  ) %>%
+  dplyr::mutate(
+    cx_positive = as.integer(!is.na(organism_category))
+  ) %>%
+  dplyr::group_by(patient_id) %>%
+  dplyr::summarise(
+    bx_positive_30d = as.integer(any(cx_positive == 1, na.rm = TRUE)),
+    .groups = "drop"
+  )
+  
+abx_list <- c(
+  "amikacin","aztreonam","cefepime","cefiderocol","ceftaroline","ceftazidime",
+  "ceftazidime_avibactam","ceftazidime_clavulanate","ceftolozane_tazobactam",
+  "colistin","dalbavancin","daptomycin","doripenem","ertapenem","fidaxomicin",
+  "gentamicin","imipenem","imipenem_relebactam","linezolid","meropenem",
+  "meropenem_vaborbactam","metronidazole","piperacillin_tazobactam","tedizolid",
+  "telavancin","tigecycline","tobramycin","vancomycin"
+)
+
+abx <- data_list$medication_admin_intermittent %>%
+collect()
+  dplyr::select(hospitalization_id, med_group, admin_dttm) %>%
+    dplyr::filter(med_group == 'CMS_sepsis_qualifying_antibiotics') %>%
+    collect()
+  dplyr::inner_join(
+    cohort %>% dplyr::select(patient_id, hospitalization_id, cart_t0),
+    by = "hospitalization_id"
+  ) %>%
+  dplyr::filter(
+    !is.na(admin_dttm),
+    admin_dttm >= cart_t0,
+    admin_dttm <= cart_t0 + lubridate::days(30)
+  ) %>%
+  dplyr::group_by(patient_id) %>%
+  dplyr::summarise(
+    abx_30d = dplyr::n_distinct(as.Date(admin_dttm)),
+    .groups = "drop"
+  )
+
+cohort <- cohort %>%
+  dplyr::left_join(blood_cx, by = "patient_id") %>%
+  dplyr::left_join(abx,      by = "patient_id") %>%
+  dplyr::mutate(
+    bx_positive_30d = tidyr::replace_na(bx_positive_30d, 0L),
+    abx_30d         = tidyr::replace_na(abx_30d,         0L)
+  )
+
+
+rm(norm_medcat, safe_div, safe_log2, thr_easix, thr_ferritin, thr_crp, lab_window, lab_window_wide, scores,
+  blood_cx, abx_list, abx)
+gc()
+
+###Clean up cohort------------------------------------------------------------------------------------------------------------
+cohort <- cohort %>%
+  dplyr::select(-admission_dttm, -discharge_dttm, -death_dttm)
+
+#Go to 02_temptraj

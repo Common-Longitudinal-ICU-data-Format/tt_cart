@@ -1,0 +1,155 @@
+---
+title: "02_temptraj"
+output: html_notebook
+---
+
+# Cohort script for CLIF project testing temperature trajectories after CAR-T
+
+# Assign temperature trajectory subphenotypes for CAR-T patients
+# Requires: data_list (from 00_setup), cohort, temp (from 01_cohort.R)
+
+#Temp Traj Assignment--------------------------------------------------------------------------------------------------------
+standardize <- function(x) {(x - fmean(x, na.rm = TRUE)) / fsd(x, na.rm = TRUE)}
+  
+temp_index <- data_list$vitals %>%
+  dplyr::filter(vital_category == "temp_c") %>%
+  dplyr::select(hospitalization_id, recorded_dttm, temp_c = vital_value) %>%
+  collect()
+  dplyr::inner_join(
+    cohort %>% dplyr::select(patient_id, hospitalization_id, cart_t0, temp_pass),
+    by = "hospitalization_id"
+  ) %>%
+  dplyr::filter(
+    temp_pass == TRUE,
+    !is.na(temp_c),
+    temp_c >= 30, temp_c < 45,
+    !is.na(recorded_dttm),
+    recorded_dttm >= cart_t0,
+    recorded_dttm <= cart_t0 + lubridate::hours(72)
+  ) %>%
+  dplyr::arrange(patient_id, hospitalization_id, recorded_dttm)
+
+temp_hourly <- temp_index %>%
+  dplyr::rename(temp_time = recorded_dttm) %>%
+  dplyr::group_by(patient_id, hospitalization_id, cart_t0) %>%
+  dplyr::mutate(t0 = dplyr::first(cart_t0)) %>%
+  tidyr::complete(temp_time = seq.POSIXt(from = t0[1], to = t0[1] + lubridate::hours(72), by = "1 hour")) %>%
+  tidyr::fill(temp_c, .direction = "down") %>%
+  tidyr::fill(temp_c, .direction = "up") %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(
+    temp_hr_post_cart = as.integer(difftime(temp_time, cart_t0, units = "hours")),
+    temp_z            = standardize(temp_c)
+  ) %>%
+  dplyr::arrange(patient_id, hospitalization_id, temp_time) %>%
+  dplyr::select(patient_id, temp_hr_post_cart, temp_z, temp_c)
+
+temp_model <- temp_hourly %>%
+  mutate(
+    traj1  = -0.89548 - 0.00298 * temp_hr_post_cart + 0.00010 * (temp_hr_post_cart^2),
+    traj2  = -0.00667 + 0.00050 * temp_hr_post_cart - 0.00001 * (temp_hr_post_cart^2),
+    traj3  =  1.35157 - 0.06946 * temp_hr_post_cart + 0.00065 * (temp_hr_post_cart^2),
+    traj4  =  1.22203 - 0.00590 * temp_hr_post_cart - 0.00007 * (temp_hr_post_cart^2),
+    error1 = (temp_z - traj1)^2,
+    error2 = (temp_z - traj2)^2,
+    error3 = (temp_z - traj3)^2,
+    error4 = (temp_z - traj4)^2
+  ) %>%
+  summarise(
+    sum1 = sum(error1, na.rm = TRUE),
+    sum2 = sum(error2, na.rm = TRUE),
+    sum3 = sum(error3, na.rm = TRUE),
+    sum4 = sum(error4, na.rm = TRUE),
+    .by = c(patient_id)       
+  ) %>%
+  mutate(
+    lowest = pmin(sum1, sum2, sum3, sum4),
+    model  = case_when(
+      lowest == sum1 ~ 4L,
+      lowest == sum2 ~ 3L,
+      lowest == sum3 ~ 2L,
+      lowest == sum4 ~ 1L,
+      TRUE           ~ NA_integer_
+    )
+  ) %>%
+  dplyr::mutate(
+  trajectory = dplyr::case_when(
+      model == 1L ~ "HSR",  
+      model == 2L ~ "HFR",  
+      model == 3L ~ "NT",   
+      model == 4L ~ "HT",   
+      TRUE        ~ NA_character_
+    )
+  ) %>%
+  select(patient_id, model, trajectory)
+
+#Flag if less than n<5 patients in a trajectory-------------------------------------------------------------------------------
+if (any(table(temp_model$trajectory) <= 5 & table(temp_model$trajectory) > 0)) {
+  small_n <- table(temp_model$trajectory)[table(temp_model$trajectory) <= 5 &
+                                          table(temp_model$trajectory) > 0]
+  stop(paste0(
+    "ERROR: Trajectories with n ≤ 5 detected:\n",
+    paste(names(small_n), small_n, sep = " = ", collapse = "\n")
+  ), call. = FALSE)
+}
+
+#Temperature mean/SD by hour × trajectory ----------------------------------------------------------------------------------
+
+temp_hourly_summary <- temp_hourly %>%
+  dplyr::left_join(temp_model, by = "patient_id") %>%
+  dplyr::group_by(trajectory, temp_hr_post_cart) %>%
+  dplyr::summarise(
+    mean_temp = mean(temp_c, na.rm = TRUE),
+    sd_temp   = sd(temp_c, na.rm = TRUE),
+    n_patients = dplyr::n_distinct(patient_id),
+    .groups = "drop"
+  )
+  
+#Temperature and other vital sign summaries for entire 72 hour period-------------------------------------------------------  
+vitals_72h <- data_list$vitals %>%
+  dplyr::filter(vital_category %in% c("temp_c","heart_rate","respiratory_rate","map","spo2")) %>%
+  dplyr::select(hospitalization_id, recorded_dttm, vital_category, vital_value) %>%
+  collect() |>
+  dplyr::inner_join(
+    cohort %>% dplyr::select(patient_id, hospitalization_id, cart_t0, temp_pass),
+    by = "hospitalization_id"
+  ) %>%
+  dplyr::filter(
+    temp_pass == TRUE,
+    recorded_dttm >= cart_t0,
+    recorded_dttm <= cart_t0 + lubridate::hours(72)
+  ) %>%
+  dplyr::mutate(
+    hr_post_cart   = as.numeric(difftime(recorded_dttm, cart_t0, units = "hours")),
+    vital_category = tolower(vital_category),
+    vital_value    = suppressWarnings(as.numeric(vital_value))
+  ) %>%
+  dplyr::left_join(temp_model, by = "patient_id") %>%
+  dplyr::filter(!is.na(trajectory))
+
+vitals_72h_summary <- vitals_72h %>%
+  dplyr::group_by(trajectory, vital_category) %>%
+  dplyr::summarise(
+    mean_vital = mean(vital_value, na.rm = TRUE),
+    sd_vital   = sd(vital_value, na.rm = TRUE),
+    n_patients = dplyr::n_distinct(patient_id),
+    .groups = "drop"
+  )
+
+#Export summaries-------------------------------------------------------------------------------------------------------------
+temp_hourly_summary_path <- file.path(
+  project_location, "proj_output",
+  paste0("temp_hourly_summary_", today, ".csv")
+)
+
+vitals_72h_summary_path <- file.path(
+  project_location, "proj_output",
+  paste0("vitals_72h_summary_", today, ".csv")
+)
+
+data.table::fwrite(temp_hourly_summary, temp_hourly_summary_path)
+data.table::fwrite(vitals_72h_summary, vitals_72h_summary_path)
+
+
+
+cohort <- cohort %>% dplyr::left_join(temp_model, by = "patient_id")
