@@ -474,7 +474,7 @@ thr_crp      <- 21    # mg/L
 # 1) Pull labs -12h and +12 from CART
 lab_window <- data_list$labs %>%
   dplyr::rename(lab_time = lab_result_dttm) %>%
-  dplyr::filter(lab_category %in% c("ldh", "creatinine", "platelet_count", "crp", "ferritin")) %>%
+  dplyr::filter(lab_category %in% c("ldh", "creatinine", "platelet_count", "crp", "ferritin", "lymphocytes_absolute", "wbc")) %>%
   collect() |>
   dplyr::inner_join(
     cohort %>% dplyr::select(patient_id, hospitalization_id, cart_t0),
@@ -493,6 +493,17 @@ lab_window <- data_list$labs %>%
 
 lab_window_wide <- lab_window %>%
   tidyr::pivot_wider(names_from = lab_category, values_from = lab_value_numeric)
+
+cohort <- cohort %>%
+  dplyr::left_join(
+    lab_window_wide %>%
+      dplyr::select(hospitalization_id, wbc, lymphocytes_absolute) %>%
+      dplyr::rename(
+        wbc_infusion      = wbc,                   
+        lymph_abs_infusion = lymphocytes_absolute  
+      ),
+    by = "hospitalization_id"
+  )
   
 # 2) Calculate scores
 scores <- lab_window_wide %>%
