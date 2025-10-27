@@ -7,7 +7,7 @@ output: html_notebook
 ## Requires data_list to be loaded/validated from 00_setup
 
 # Cohort identification
-## Inclusion criteria: age >= 18, dates 2018-2024, B-cell malignancy, receipt of CAR-T--------------------
+## Inclusion criteria: age >= 18, dates 2018-2024, receipt of CAR-T--------------------
 
 
 hosp_incl <- data_list$hospitalization %>%
@@ -36,59 +36,12 @@ cart_product_incl <- data_list$medication_admin_intermittent %>%
   dplyr::distinct(hospitalization_id, admin_dttm, cart_name, cart_group) |>
   collect()
 
-dx_incl <- data_list$hospital_diagnosis %>%
-  dplyr::filter(
-    stringr::str_starts(tolower(diagnosis_code), "c82") |  # follicular lymphoma
-    stringr::str_starts(tolower(diagnosis_code), "c83") |  # nonfollicular lymphoma (MCL, DLBCL)
-    stringr::str_starts(tolower(diagnosis_code), "c85") |  # non-Hodgkin lymphoma
-    stringr::str_starts(tolower(diagnosis_code), "c90") |  # multiple myeloma
-    stringr::str_starts(tolower(diagnosis_code), "c91")    # lymphoid leukemia (B-ALL)
-  ) %>%
-  dplyr::mutate(
-    icd_prefix = stringr::str_sub(tolower(diagnosis_code), 1, 3),
-    dx_group = dplyr::case_when(
-      icd_prefix == "c82" ~ 1L,   # follicular lymphoma
-      icd_prefix == "c83" ~ 2L,   # nonfollicular lymphoma
-      icd_prefix == "c85" ~ 3L,   # NHL, MLBCL
-      icd_prefix == "c90" ~ 4L,   # multiple myeloma
-      icd_prefix == "c91" ~ 5L,   # lymphoid leukemia B-ALL
-      TRUE ~ NA_integer_
-    )
-  ) %>%
-  dplyr::select(hospitalization_id, diagnosis_code, dx_group) %>%
-  dplyr::distinct() |>
-  collect()
-  
-dx_incl <-
-dx_incl |>
-left_join(hosp_incl |> fselect(patient_id, hospitalization_id, admission_dttm)) |>
-rename(start_dttm = admission_dttm)
-
-###Sanity check: how many dx_group per patient, if multiple, create summary and keep most recent--------------------
-
-pts_multi_dx <- dx_incl %>%
-  dplyr::group_by(patient_id) %>%
-  dplyr::summarise(n_dx_groups = dplyr::n_distinct(dx_group), .groups = "drop") %>%
-  dplyr::filter(n_dx_groups > 1) 
-
-dx_incl_filter <- dx_incl %>%
-  dplyr::group_by(patient_id) %>%
-  dplyr::arrange(dplyr::desc(start_dttm)) %>%
-  dplyr::slice_head(n = 1) %>%
-  dplyr::ungroup() %>%
-  dplyr::select(patient_id, hospitalization_id, dx_group)
-
 ##Filter hospitalization based upon above inclusion criteria--------------------------------------------------------
 hosp_incl_filter <- hosp_incl %>%
   dplyr::inner_join(
-    dx_incl_filter |> fselect(hospitalization_id, dx_group) |> funique(),
-    by = "hospitalization_id"
-  ) %>%
-  
-  dplyr::inner_join(
     cart_product_incl, by = "hospitalization_id"
   ) %>%
-  dplyr::distinct(hospitalization_id, .keep_all = TRUE) %>% #if code not working look here
+  dplyr::distinct(hospitalization_id, .keep_all = TRUE) %>%
   dplyr::arrange(hospitalization_id, admission_dttm)
 
 ##Set cart infusion at t0, filter out hospitalizations before cart and after 30 days------------------------------
@@ -99,10 +52,10 @@ cart_admin_t0 <- cart_product_incl %>%
   dplyr::slice_head(n = 1) %>%
   dplyr::ungroup() %>%
   dplyr::mutate(cart_t0 = admin_dttm) %>%
-  dplyr::select(hospitalization_id, cart_t0, cart_group)                 
+  dplyr::select(hospitalization_id, cart_t0)                 
 
 hosp_post_cart <- hosp_incl_filter %>%
-  dplyr::left_join(cart_admin_t0 |> fselect(-cart_group), by = "hospitalization_id") %>%
+  dplyr::left_join(cart_admin_t0, by = "hospitalization_id") %>%
   dplyr::filter(
     !is.na(cart_t0),
     discharge_dttm >= cart_t0,
@@ -163,7 +116,7 @@ n_hosp_total <-
   dplyr::distinct(patient_id) %>%
   nrow()
 
-# 2) patients who did not receive cart or did not have a qualifying diagnosis
+# 2) patients who did not receive cart
 n_no_cart <-
   hosp_incl %>%
   dplyr::distinct(patient_id) %>%
@@ -172,13 +125,7 @@ n_no_cart <-
   funique(), dplyr::distinct(patient_id), by = "patient_id") %>%
   nrow()
 
-n_no_dx <-
-  hosp_incl %>%
-  dplyr::distinct(patient_id) %>%
-  dplyr::anti_join(dx_incl_filter %>% dplyr::distinct(patient_id), by = "patient_id") %>%
-  nrow()
-
-# 3) n patients who were hospitalized AND had CAR-T AND qualifying dx
+# 3) n patients who were hospitalized AND had CAR-T
 n_pts_incl <-
   hosp_incl_filter %>%
   dplyr::distinct(patient_id) %>%
@@ -211,14 +158,10 @@ n_final <-
   dplyr::distinct(patient_id) %>%
   nrow()
 
-n_pts_multi_dx <- nrow(pts_multi_dx)
-
 excl_summary <- tibble::tibble(
   step = c(
     "N patients hospitalized 2018–2024",         
     "N patients who did not receive CAR-T",
-    "N patients without qualifying diagnosis",
-    "N patients with >1 qualifying diagnosis",
     "N patients meeting all inclusion criteria",
     "N patients discharged or deceased <72 hours post CAR-T",
     "N patients without sufficient temp data",
@@ -227,8 +170,6 @@ excl_summary <- tibble::tibble(
   n = c(
     n_hosp_total,
     n_no_cart,
-    n_no_dx,
-    n_pts_multi_dx,
     n_pts_incl, 
     n_early_discharge,
     n_temp_fail,
@@ -243,7 +184,7 @@ excl_summary_path <- file.path(
 
 data.table::fwrite(excl_summary, excl_summary_path)
 
-rm(hosp_incl, cart_product_incl, dx_incl, pts_multi_dx, hosp_incl_filter, hosp_post_cart, hosp_post_cart_excl, excl_summary, excl_summary_path, n_hosp_total, n_no_cart, n_no_dx, n_pts_incl, n_early_discharge, n_index_admit, n_index_temp, n_temp_fail, n_final, n_pts_multi_dx)
+rm(hosp_incl, cart_product_incl, hosp_incl_filter, hosp_post_cart, hosp_post_cart_excl, excl_summary, excl_summary_path, n_hosp_total, n_no_cart, n_pts_incl, n_early_discharge, n_index_admit, n_index_temp, n_temp_fail, n_final)
 
 gc()
       
@@ -262,10 +203,10 @@ select(
     patient_id, hospitalization_id,
     admission_dttm, discharge_dttm, cart_t0,
     age_at_admission, sex_category, race_category, ethnicity_category, death_dttm,
-    dx_group, cart_group, temp_pass
+    cart_group, temp_pass
   )
 
-rm(dx_incl_filter, hosp_post_cart_final)
+rm(hosp_post_cart_final)
 
 #Outcomes-----------------------------------------------------------------------------------------------------------
 ##Index hospital LOS, readmit within 30 days, death within 30 days, death within 90 days
@@ -448,7 +389,7 @@ cohort <- cohort %>%
 rm(toci, anakinra, apap)
 
 ##Steroids
-#This code calculates how many days after cart a patient received steroids at a dose usually used to treat CRS and ICAHNs.
+#This code calculates how many days after cart a patient received steroids at a dose usually used to treat CRS and/or ICANs.
 steroid_map <- tibble::tibble(
   med_category = c("dexamethasone","betamethasone","methylprednisolone","prednisone","prednisolone","hydrocortisone"),
   dex_factor   = c(1.0000,        1.2500,         0.1875,              0.1500,      0.1500,       0.0375)
@@ -632,10 +573,10 @@ abx_list <- c(
 )
 
 abx <- data_list$medication_admin_intermittent %>%
-collect()
-  dplyr::select(hospitalization_id, med_group, admin_dttm) %>%
-    dplyr::filter(med_group == 'CMS_sepsis_qualifying_antibiotics') %>%
-    collect()
+  dplyr::select(hospitalization_id, med_group, med_category, admin_dttm) %>%
+  dplyr::filter(med_group == 'CMS_sepsis_qualifying_antibiotics') %>%
+  collect()
+  dplyr::filter(med_category %in% abx_list) %>%
   dplyr::inner_join(
     cohort %>% dplyr::select(patient_id, hospitalization_id, cart_t0),
     by = "hospitalization_id"
