@@ -181,8 +181,7 @@ today      = format(Sys.Date(), "%y%m%d")
 
 required_tables = 
   c(
-    "patient", 
-    "hospital_diagnosis", 
+    "patient",  
     "hospitalization", 
     "adt", 
     "vitals", 
@@ -190,8 +189,7 @@ required_tables =
     "medication_admin_continuous", 
     "respiratory_support", 
     "medication_admin_intermittent",
-    "microbiology_culture",
-    "microbiology_nonculture"
+    "microbiology_culture"
   )
 
 
@@ -377,7 +375,6 @@ req_labs =
     "lactate",
     "platelet_count",
     "lymphocytes_absolute",
-    "neutrophil_absolute",
     "ldh",
     "ferritin"
   )
@@ -408,12 +405,6 @@ adt_list =
     req_vars   = c("hospitalization_id", "location_category", "in_dttm", "out_dttm"),
     req_values = list(location_category = c("icu", "ward"))
   )
-
-dx_list = list(
-  table_name = "hospital_diagnosis",
-  req_vars   = c("patient_id", "diagnosis_code", "diagnosis_code_format"),
-  req_values = list(diagnosis_code_format = c("ICD10CM"))
-)
 
 med_cont_list = 
   list(
@@ -466,7 +457,6 @@ validation_specs = list(
   patient_list, 
   hosp_list, 
   adt_list, 
-  dx_list,
   med_cont_list,
   med_int_list,
   resp_list, 
@@ -479,7 +469,7 @@ validation_specs = list(
 
 validate_all_tables(data_list, validation_specs)
 
-rm(micro_cult_list, labs_list, vitals_list, resp_list, med_cont_list, med_int_list, adt_list, dx_list, hosp_list, patient_list, validation_specs)
+rm(micro_cult_list, labs_list, vitals_list, resp_list, med_cont_list, med_int_list, adt_list, hosp_list, patient_list, validation_specs)
 rm(clif_table_basenames, clif_table_filenames, required_filenames, required_tables, table_file_map)
 gc()
 
