@@ -14,7 +14,7 @@ standardize <- function(x) {(x - fmean(x, na.rm = TRUE)) / fsd(x, na.rm = TRUE)}
 temp_index <- data_list$vitals %>%
   dplyr::filter(vital_category == "temp_c") %>%
   dplyr::select(hospitalization_id, recorded_dttm, temp_c = vital_value) %>%
-  collect()
+  collect() %>%
   dplyr::inner_join(
     cohort %>% dplyr::select(patient_id, hospitalization_id, cart_t0, temp_pass),
     by = "hospitalization_id"
@@ -88,7 +88,7 @@ if (any(table(temp_model$trajectory) <= 5 & table(temp_model$trajectory) > 0)) {
   small_n <- table(temp_model$trajectory)[table(temp_model$trajectory) <= 5 &
                                           table(temp_model$trajectory) > 0]
   stop(paste0(
-    "ERROR: Trajectories with n ≤ 5 detected:\n",
+    "NOTICE: Trajectories with n ≤ 5 detected:\n",
     paste(names(small_n), small_n, sep = " = ", collapse = "\n")
   ), call. = FALSE)
 }

@@ -355,12 +355,12 @@ anakinra <- data_list$medication_admin_intermittent %>%
   dplyr::select(patient_id, anakinra_time_until, anakinra_n_doses_30d)
 
 ###Acetaminophen (total doses, cumulative doses within 72 hours after CART)
-apap <- data_list$medication_admin_intermittent %>%
-collect()
+apap <- 
+data_list$medication_admin_intermittent %>%
   dplyr::filter(
     med_category == "acetaminophen") %>%
   dplyr::select(hospitalization_id, admin_dttm, med_dose, med_dose_unit) %>%
-  collect() 
+  collect() %>%
   dplyr::inner_join(
     cohort %>% dplyr::select(patient_id, hospitalization_id, cart_t0),
     by = "hospitalization_id") %>%
@@ -375,7 +375,8 @@ collect()
     .groups = "drop"
   )
 
-cohort <- cohort %>%
+cohort <- 
+cohort %>%
   dplyr::left_join(apap,     by = "patient_id") %>%
   dplyr::left_join(toci,     by = "patient_id") %>%
   dplyr::left_join(anakinra, by = "patient_id") %>%
@@ -586,7 +587,7 @@ abx_list <- c(
 abx <- data_list$medication_admin_intermittent %>%
   dplyr::select(hospitalization_id, med_group, med_category, admin_dttm) %>%
   dplyr::filter(med_group == 'CMS_sepsis_qualifying_antibiotics') %>%
-  collect()
+  collect() %>%
   dplyr::filter(med_category %in% abx_list) %>%
   dplyr::inner_join(
     cohort %>% dplyr::select(patient_id, hospitalization_id, cart_t0),
@@ -604,10 +605,10 @@ abx <- data_list$medication_admin_intermittent %>%
   )
 
 cohort <- cohort %>%
-  dplyr::left_join(blood_cx, by = "patient_id") %>%
+#  dplyr::left_join(blood_cx, by = "patient_id") %>%
   dplyr::left_join(abx,      by = "patient_id") %>%
   dplyr::mutate(
-    bx_positive_30d = tidyr::replace_na(bx_positive_30d, 0L),
+#    bx_positive_30d = tidyr::replace_na(bx_positive_30d, 0L),
     abx_30d         = tidyr::replace_na(abx_30d,         0L)
   )
 

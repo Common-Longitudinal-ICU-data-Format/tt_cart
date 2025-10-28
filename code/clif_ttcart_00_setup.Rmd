@@ -131,7 +131,7 @@ message(
 
 ### site details ---------------------------------------------------------------
 
-config        = yaml::read_yaml(here("projects", "car-t_lebold", "config.yaml"))
+config        = yaml::read_yaml(here("projects", "tt_cart", "config", "config.yaml"))
 allowed_files = c("parquet", "csv", "fst")
 
 ### user enters site details ---------------------------------------------------
