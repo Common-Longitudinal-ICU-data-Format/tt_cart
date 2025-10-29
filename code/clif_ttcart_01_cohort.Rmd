@@ -598,11 +598,9 @@ abx <- data_list$medication_admin_intermittent %>%
     admin_dttm >= cart_t0,
     admin_dttm <= cart_t0 + lubridate::days(30)
   ) %>%
-  dplyr::group_by(patient_id) %>%
-  dplyr::summarise(
-    abx_30d = dplyr::n_distinct(as.Date(admin_dttm)),
-    .groups = "drop"
-  )
+  dplyr::mutate(admin_date = as.Date(admin_dttm)) %>%            
+  dplyr::distinct(patient_id, admin_date) %>%                    
+  dplyr::count(patient_id, name = "abx_30d")
 
 cohort <- cohort %>%
 #  dplyr::left_join(blood_cx, by = "patient_id") %>%
@@ -611,7 +609,6 @@ cohort <- cohort %>%
 #    bx_positive_30d = tidyr::replace_na(bx_positive_30d, 0L),
     abx_30d         = tidyr::replace_na(abx_30d,         0L)
   )
-
 
 rm(norm_medcat, safe_div, safe_log2, thr_easix, thr_ferritin, thr_crp, lab_window, lab_window_wide, scores,
   blood_cx, abx_list, abx)
