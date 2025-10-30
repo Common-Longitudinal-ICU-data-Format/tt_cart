@@ -62,14 +62,14 @@ hosp_post_cart <- hosp_incl_filter %>%
     admission_dttm <= cart_t0 + lubridate::days(30)
   ) %>%
   dplyr::mutate(index_admit = cart_t0 >= admission_dttm & cart_t0 <= discharge_dttm,
-  index_discharge_72h = index_admit & (discharge_dttm < cart_t0 + lubridate::hours(72))) %>%
+  index_discharge_24h = index_admit & (discharge_dttm < cart_t0 + lubridate::hours(24))) %>%
   dplyr::arrange(patient_id, admission_dttm)
 
-##Exclusion criteria: abnormal temp before cart, death/discharge or missing 72hr of temps---------------------------
+##Exclusion criteria: abnormal temp before cart, death/discharge or missing 24hr of temps---------------------------
 
 hosp_post_cart_excl <- hosp_post_cart %>%
   dplyr::group_by(patient_id) %>%
-  dplyr::filter(!any(index_discharge_72h, na.rm = TRUE)) %>%
+  dplyr::filter(!any(index_discharge_24h, na.rm = TRUE)) %>%
   dplyr::ungroup()
 
 temp <- data_list$vitals %>%
@@ -91,13 +91,13 @@ temp <- data_list$vitals %>%
       temp_c >= 35 & temp_c < 38,
       na.rm = TRUE
     ),
-    post_72h_temp = any(
-      recorded_dttm >= cart_t0 + lubridate::hours(72),
+    post_24h_temp = any(
+      recorded_dttm >= cart_t0 + lubridate::hours(24),
       na.rm = TRUE
     ),
     .groups = "drop"
   ) %>%
-  dplyr::mutate(temp_pass = pre_norm_temp & post_72h_temp) %>%
+  dplyr::mutate(temp_pass = pre_norm_temp & post_24h_temp) %>%
   dplyr::group_by(patient_id) %>%
   dplyr::summarise(temp_pass = any(temp_pass, na.rm = TRUE), .groups = "drop")
 
@@ -134,7 +134,7 @@ n_pts_incl <-
 # 4) post-CAR-T exclusions (patient-level)
 n_early_discharge <-
   hosp_post_cart %>%
-  dplyr::filter(index_admit, index_discharge_72h) %>%
+  dplyr::filter(index_admit, index_discharge_24h) %>%
   dplyr::distinct(patient_id) %>%
   nrow()
 
@@ -163,7 +163,7 @@ excl_summary <- tibble::tibble(
     "N patients hospitalized 2018–2024",         
     "N patients who did not receive CAR-T",
     "N patients meeting all inclusion criteria",
-    "N patients discharged or deceased <72 hours post CAR-T",
+    "N patients discharged or deceased <24 hours post CAR-T",
     "N patients without sufficient temp data",
     "N patients meeting all inclusion and exclusion criteria"
   ),
@@ -603,19 +603,15 @@ abx <- data_list$medication_admin_intermittent %>%
   dplyr::count(patient_id, name = "abx_30d")
 
 cohort <- cohort %>%
-#  dplyr::left_join(blood_cx, by = "patient_id") %>%
+dplyr::left_join(blood_cx, by = "patient_id") %>%
   dplyr::left_join(abx,      by = "patient_id") %>%
   dplyr::mutate(
-#    bx_positive_30d = tidyr::replace_na(bx_positive_30d, 0L),
+bx_positive_30d = tidyr::replace_na(bx_positive_30d, 0L),
     abx_30d         = tidyr::replace_na(abx_30d,         0L)
   )
 
 rm(norm_medcat, safe_div, safe_log2, thr_easix, thr_ferritin, thr_crp, lab_window, lab_window_wide, scores,
   blood_cx, abx_list, abx)
 gc()
-
-###Clean up cohort------------------------------------------------------------------------------------------------------------
-cohort <- cohort %>%
-  dplyr::select(-admission_dttm, -discharge_dttm, -death_dttm)
 
 #Go to 02_temptraj
