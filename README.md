@@ -28,8 +28,6 @@ Tables included:
    med_group = steroid, analgesia, car_t
 14. **microbiology_culture:** hospitalization_id, result_dttm, fluid_category, organism_category
 
-*List all required tables for the project here, and provide a brief rationale for why they are required.*
-
 ## Cohort identification
 Inclusion criteria:
 Adult patients admitted to the hospital between 2018–2024 for CD19 or BCMA targeted CAR-T therapy infusion
