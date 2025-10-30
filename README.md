@@ -1,76 +1,65 @@
-# *CLIF Project Title*
+#CLIF: CAR-T Temperature Trajectory
 
-## CLIF VERSION 
-
-[major].[minor]
+## CLIF VERSION 2.1
 
 ## Objective
 
-*Describe the project objective*
+This project provides an R-based pipeline for analyzing temperature trajectories in patients undergoing chimeric antigen receptor T-cell (CAR-T) therapy. The goal is to test the extent to which these trajectories predict CAR-T complications, including cytokine release syndrome, infections and ICU care.
 
 ## Required CLIF tables and fields
 
-Please refer to the online [CLIF data dictionary](https://clif-consortium.github.io/website/data-dictionary.html), [ETL tools](https://github.com/clif-consortium/CLIF/tree/main/etl-to-clif-resources), and [specific table contacts](https://github.com/clif-consortium/CLIF?tab=readme-ov-file#relational-clif) for more information on constructing the required tables and fields. 
+This project uses standardized CLIF tables:
+
+Tables included:
+1. **patient:** patient_id, race_category, ethnicity_category, sex_category, death_dttm
+2. **hospitalization:** patient_id, hospitalization_id, age_at_admission, admission_dttm, discharge_dttm 
+3. **adt:** hospitalization_id, location_category, in_dttm, out_dttm
+   location_category = icu, ward
+4. **vitals:** hospitalization_id, vital_category, vital_value, recorded_dttm
+   vital_category = heart_rate, respiratory_rate, map, spo2, temp_c, height_cm, weight_kg
+5. **labs:** hospitalization_id, lab_category, lab_value, lab_result_dttm
+   lab_category = crp, wbc, creatinine, platelet_count, lymphocytes_absolute, ldh, ferritin
+6. **medication_admin_continuous:** hospitalization_id, med_group, med_category
+   med_group = vasoactives
+   med_category = norepinephrine, vasopressin, epinephrine, phenylephrine
+7. **respiratory_support:** hospitalization_id, device_category, recorded_dttm
+   device_category = IMV, NIPPV, High Flow NC
+8. **medication_admin_intermittent:** hospitalization_id, med_group
+   med_group = steroid, analgesia, car_t
+14. **microbiology_culture:** hospitalization_id, result_dttm, fluid_category, organism_category
 
 *List all required tables for the project here, and provide a brief rationale for why they are required.*
 
-Example:
-The following tables are required:
-1. **patient**: `patient_id`, `race_category`, `ethnicity_category`, `sex_category`
-2. **hospitalization**: `patient_id`, `hospitalization_id`, `admission_dttm`, `discharge_dttm`, `age_at_admission`
-3. **vitals**: `hospitalization_id`, `recorded_dttm`, `vital_category`, `vital_value`
-   - `vital_category` = 'heart_rate', 'resp_rate', 'sbp', 'dbp', 'map', 'resp_rate', 'spo2'
-4. **labs**: `hospitalization_id`, `lab_result_dttm`, `lab_category`, `lab_value`
-   - `lab_category` = 'lactate'
-5. **medication_admin_continuous**: `hospitalization_id`, `admin_dttm`, `med_name`, `med_category`, `med_dose`, `med_dose_unit`
-   - `med_category` = "norepinephrine", "epinephrine", "phenylephrine", "vasopressin", "dopamine", "angiotensin", "nicardipine", "nitroprusside", "clevidipine", "cisatracurium"
-6. **respiratory_support**: `hospitalization_id`, `recorded_dttm`, `device_category`, `mode_category`, `tracheostomy`, `fio2_set`, `lpm_set`, `resp_rate_set`, `peep_set`, `resp_rate_obs`
-
 ## Cohort identification
-*Describe study cohort inclusion and exclusion criteria here*
+Inclusion criteria:
+Adult patients admitted to the hospital between 2018–2024 for CD19 or BCMA targeted CAR-T therapy infusion
+Documented normal temperature (≥35°C and <38°C) within 4 hours prior to CAR-T infusion
+At least 24 hours of recorded temperatures following infusion for trajectory assignment
+
+Exclusion criteria: 
+Patients discharged within 24 hours of CAR-T infusion
+Patients who died within 24 hours of CAR-T infusion (due to inadequate temperature data)
 
 ## Expected Results
+The initial results will be a database of CLIF tables: 
+1. counts for exclusion flow diagram (proj_output/excl_summary)
+2. summary statistics for vitals (proj_output/vitals_72h_summary)
+3. hourly temperature summary by trajectory (proj_output/temp_hourly_summary)
+4. summary statistics for continuous outcome and demographic variables (proj_output/continuous_all; proj_output/continuous_by_traj)
+5. summary statistics for categorical outcome and demographic variables (proj_output/categorical_all; proj_output/categorical_by_traj)
 
-*Describe the output of the analysis. The final project results should be saved in the [`output/final`](output/README.md) directory.*
+Summary tables will be available in the output/final directory.
 
-## Detailed Instructions for running the project
+## Instructions for running the project
 
-## 1. Update `config/config.json`
-Follow instructions in the [config/README.md](config/README.md) file for detailed configuration steps.
+Quick start checklist
 
-**Note: if using the `01_run_cohort_id_app.R` file, this step is not necessary as the app will create the config file for the user**
+1. Populate config/config_clif_oncrisk.yaml.
 
-## 2. Set up the project environment
+2. Confirm clif_sites.csv contains your site_lowercase.
 
-*Describe the steps to setup the project environment.*
+3. Place CLIF extracts in clif_data_location with required table names.
 
-Example for R:
-Run `00_renv_restore.R` in the [code](code/templates/R) to set up the project environment
-
-Example for Python:
-
-**Preferred method using uv:**
-```
-uv init project-name
-cd project-name
-```
-Note: uv automatically creates virtual environments and manages dependencies. It generates required files like `uv.lock` for reproducible builds. For more details, see the [CLIF uv guide by Zewei Whiskey Liao](https://github.com/Common-Longitudinal-ICU-data-Format/CLIF-data-huddles/blob/main/notes/uv-and-conv-commits.md).
-
-**Alternative method using python3:**
-```
-python3 -m venv .mobilization
-source .mobilization/bin/activate
-pip install -r requirements.txt 
-```
-
-## 3. Run code
-
-Detailed instructions on the code workflow are provided in the [code directory](code/README.md)
-
-## Example Repositories
-* [CLIF Adult Sepsis Events](https://github.com/08wparker/CLIF_sepsis) for R
-* [CLIF Eligibility for mobilization](https://github.com/kaveriC/CLIF-eligibility-for-mobilization) for Python
-* [CLIF Variation in Ventilation](https://github.com/ingra107/clif_vent_variation)
----
+4. Run 00 → 01 → 02 → 03 in order.
 
 
