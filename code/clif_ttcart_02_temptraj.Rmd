@@ -16,7 +16,7 @@ temp_index <- data_list$vitals %>%
   dplyr::select(hospitalization_id, recorded_dttm, temp_c = vital_value) %>%
   collect() %>%
   dplyr::inner_join(
-    cohort %>% dplyr::select(patient_id, hospitalization_id, cart_t0, temp_pass),
+    cohort %>% dplyr::select(patient_id, hospitalization_id, discharge_dttm, cart_t0, temp_pass),
     by = "hospitalization_id"
   ) %>%
   dplyr::filter(
@@ -27,16 +27,17 @@ temp_index <- data_list$vitals %>%
     recorded_dttm >= cart_t0,
     recorded_dttm <= cart_t0 + lubridate::hours(72)
   ) %>%
-  dplyr::arrange(patient_id, hospitalization_id, recorded_dttm)
+  dplyr::arrange(patient_id, hospitalization_id, recorded_dttm, discharge_dttm)
 
 temp_hourly <- temp_index %>%
   dplyr::rename(temp_time = recorded_dttm) %>%
-  dplyr::group_by(patient_id, hospitalization_id, cart_t0) %>%
+  dplyr::group_by(patient_id, hospitalization_id, cart_t0, discharge_dttm) %>%
   dplyr::mutate(t0 = dplyr::first(cart_t0)) %>%
   tidyr::complete(temp_time = seq.POSIXt(from = t0[1], to = t0[1] + lubridate::hours(72), by = "1 hour")) %>%
   tidyr::fill(temp_c, .direction = "down") %>%
   tidyr::fill(temp_c, .direction = "up") %>%
   dplyr::ungroup() %>%
+  dplyr::filter(temp_time <= discharge_dttm) %>%
   dplyr::mutate(
     temp_hr_post_cart = as.integer(difftime(temp_time, cart_t0, units = "hours")),
     temp_z            = standardize(temp_c)
