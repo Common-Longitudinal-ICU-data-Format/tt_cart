@@ -372,7 +372,6 @@ req_labs =
     "crp",
     "wbc",
     "creatinine",
-    "lactate",
     "platelet_count",
     "lymphocytes_absolute",
     "ldh",
