@@ -32,3 +32,6 @@ final_output/
 # Environment variables
 .env
 .env.local
+
+# Config
+config.yaml
