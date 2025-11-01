@@ -2,11 +2,11 @@
 title: "00_setup"
 output: html_notebook
 ---
-# -------------------------------------------------------------------------
-# SETUP
-# -------------------------------------------------------------------------
-# This script ensures that all required packages are installed and loaded.
-# -------------------------------------------------------------------------
+
+SETUP
+This script ensures that all required packages are installed and validated
+
+```{r packages}
 
 packages_to_install =
   c(
@@ -22,7 +22,8 @@ packages_to_install =
     "here",         
     "fst",          
     "ps", 
-    "lubridate"
+    "lubridate",
+    "rprojroot"
   )
 
 packages_to_load = 
@@ -33,7 +34,8 @@ packages_to_load =
     "collapse",      
     "arrow",        
     "here",         
-    "ps"            
+    "ps",
+    "rprojroot"
   )
 
 
@@ -57,17 +59,14 @@ options(dplyr.summarise.inform = FALSE)
 rm(packages_to_install, packages_to_load, fn_install_if_mi, fn_load_quiet)  
 gc()                          
 
+```
 
+ENVIRONMENT SETTINGS
+ This block detects your system resources (OS, CPU cores, RAM)
+ and then sets safe thread limits for packages like data.table, collapse, arrow.
+ This prevents your code from crashing your machine.
 
-# -------------------------------------------------------------------------
-# ENVIRONMENT SETTINGS
-# -------------------------------------------------------------------------
-# This block detects your system resources (OS, CPU cores, RAM)
-# and then sets safe thread limits for packages like data.table, collapse, arrow.
-# This makes your code faster but prevents it from crashing your machine.
-# -------------------------------------------------------------------------
-
-## environment -----------------------------------------------------------------
+```{r environment}
 
 ### threads and ram ------------------------------------------------------------
 
@@ -129,9 +128,21 @@ message(
           ifelse(is.finite(avail_ram_gb), round(avail_ram_gb, 1), "NA"))
 )
 
+```
+
+CLIF Project Setup
+This block preps all relevant info from your config file
+
+```{r project setup}
+
 ### site details ---------------------------------------------------------------
 
-config        = yaml::read_yaml(here("projects", "tt_cart", "config", "config.yaml"))
+# Find project root
+project_root <- find_root(rprojroot::has_dir("config"))
+
+# Read YAML config
+config <- yaml::read_yaml(file.path(project_root, "config", "config.yaml"))
+
 allowed_files = c("parquet", "csv", "fst")
 
 ### user enters site details ---------------------------------------------------
@@ -156,8 +167,8 @@ if (!(file_type %in% allowed_files)) {
 ### file locations -------------------------------------------------------------
 
 subdirs <- c(
-  "proj_tables",
-  "proj_output"
+  "intermediate_output",
+  "final_output"
 )
 
 walk(subdirs, ~ {
@@ -173,9 +184,13 @@ start_date = as.POSIXct("2018-01-01", tz = "UTC")
 end_date   = as.POSIXct("2024-12-31", tz = "UTC")
 today      = format(Sys.Date(), "%y%m%d")
 
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
+```
 
-# data -------------------------------------------------------------------------
+VERIFICATION
+This block checks your CLIF table against project requirements to ensure the 
+following scripts will run smoothly
+
+```{r CLIF tables}
 
 ## clif tables needed for project ----------------------------------------------
 
@@ -188,8 +203,9 @@ required_tables =
     "labs", 
     "medication_admin_continuous", 
     "respiratory_support", 
-    "medication_admin_intermittent",
-    "microbiology_culture"
+    "microbiology_culture",
+    "medication_admin_intermittent"
+
   )
 
 
@@ -218,7 +234,7 @@ if (length(missing_tables) > 0) {
   message("All required tables are present.")
 }
 
-rm(site_details, allowed_files, allowed_sites, missing_tables); gc()
+rm(allowed_files, missing_tables); gc()
 
 
 ## load tables -----------------------------------------------------------------
@@ -383,9 +399,12 @@ req_labs =
 patient_list = 
   list(
     table_name = "patient",
-    req_vars   = c("patient_id", "race_category", "ethnicity_category", "sex_category", "death_dttm"))
+    req_vars   = c("patient_id", 
+                   "race_category", 
+                   "ethnicity_category", 
+                   "sex_category", 
+                   "death_dttm"))
     
-  
 hosp_list = 
   list(
     table_name = "hospitalization",
@@ -394,62 +413,75 @@ hosp_list =
       "hospitalization_id", 
       "age_at_admission", 
       "admission_dttm", 
-      "discharge_dttm" 
-    )
-  )
+      "discharge_dttm" ))
   
 adt_list = 
   list(
     table_name = "adt",
-    req_vars   = c("hospitalization_id", "location_category", "in_dttm", "out_dttm"),
-    req_values = list(location_category = c("icu", "ward"))
-  )
+    req_vars   = c("hospitalization_id", 
+                   "location_category", 
+                   "in_dttm", 
+                   "out_dttm"),
+    req_values = list(location_category = c("icu", "ward")))
 
 med_cont_list = 
   list(
     table_name = "medication_admin_continuous",
-    req_vars   = c("hospitalization_id", "med_group", "med_category"),
+    req_vars   = c("hospitalization_id", 
+                   "med_group", 
+                   "med_category"),
     req_values = list(
       med_group    = c("vasoactives"),
-      med_category = c("norepinephrine", "vasopressin", "epinephrine", "phenylephrine")
-    )
-  )
+      med_category = c("norepinephrine", 
+                       "vasopressin", 
+                       "epinephrine", 
+                       "phenylephrine")))
 
 med_int_list = 
   list(
     table_name = "medication_admin_intermittent",
-    req_vars   = c("hospitalization_id", "med_group"),
+    req_vars   = c("hospitalization_id", 
+                   "med_group"),
     req_values = list(
-      med_group = c("steroid", "analgesia", "car_t")
-    )
-  )
+      med_group = c("steroid", 
+                    "analgesia", 
+                    "car_t")))
   
 resp_list = 
   list(
     table_name = "respiratory_support",
-    req_vars   = c("hospitalization_id", "device_category", "recorded_dttm"),
-    req_values = list(device_category = c("IMV", "NIPPV", "High Flow NC"))
-  )
-  
+    req_vars   = c("hospitalization_id", 
+                   "device_category", 
+                   "recorded_dttm"),
+    req_values = list(device_category = c("IMV", 
+                                          "NIPPV", 
+                                          "High Flow NC")))
+
 vitals_list = 
   list(
     table_name = "vitals",
-    req_vars   = c("hospitalization_id", "vital_category", "vital_value", "recorded_dttm"),
-    req_values = list(vital_category = req_vitals)
-  )
+    req_vars   = c("hospitalization_id", 
+                   "vital_category", 
+                   "vital_value", 
+                   "recorded_dttm"),
+    req_values = list(vital_category = req_vitals))
 
 labs_list = 
   list(
     table_name = "labs",
-    req_vars   = c("hospitalization_id", "lab_category", "lab_value", "lab_result_dttm"),
-    req_values = list(lab_category = req_labs)
-  )
+    req_vars   = c("hospitalization_id", 
+                   "lab_category", 
+                   "lab_value", 
+                   "lab_result_dttm"),
+    req_values = list(lab_category = req_labs))
 
 micro_cult_list = 
   list(
     table_name = "microbiology_culture",
-    req_vars   = c("hospitalization_id", "result_dttm", "fluid_category", "organism_category")
-  )
+    req_vars   = c("hospitalization_id", 
+                   "result_dttm", 
+                   "fluid_category", 
+                   "organism_category"))
 
 
 validation_specs = list(
@@ -460,16 +492,20 @@ validation_specs = list(
   med_int_list,
   resp_list, 
   vitals_list, 
-  labs_list,
-  micro_cult_list
+  micro_cult_list,
+  labs_list
 )
 
 ## run validation functions ----------------------------------------------------
 
 validate_all_tables(data_list, validation_specs)
 
-rm(micro_cult_list, labs_list, vitals_list, resp_list, med_cont_list, med_int_list, adt_list, hosp_list, patient_list, validation_specs)
-rm(clif_table_basenames, clif_table_filenames, required_filenames, required_tables, table_file_map)
+rm(labs_list, vitals_list, resp_list, med_cont_list, med_int_list, micro_cult_list, 
+   adt_list, hosp_list, patient_list, validation_specs)
+rm(clif_table_basenames, clif_table_filenames, required_filenames, required_tables, 
+   table_file_map)
 gc()
 
-# go to 01_cohort
+```
+
+Done with setup! Please continue to 01_cohort

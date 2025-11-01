@@ -1,5 +1,5 @@
 # Add local paath to CLIF tables
-tables_location: "/run/user/1001/gvfs/smb-share:server=accsmb.ohsu.edu,share=lyonslab/_clif_data/v_2.1/dttm_update_2.1"
+tables_location: "/run/user/1001/gvfs/smb-share:server=accsmb.ohsu.edu,share=lyonslab/_clif_data/v_2.1"
 
 # Add local path to project output location
 project_location: "/run/user/1001/gvfs/smb-share:server=accsmb.ohsu.edu,share=lyonslab/008_clif/projects/tt_cart"
