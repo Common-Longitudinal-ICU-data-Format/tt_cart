@@ -681,7 +681,7 @@ Save cohort for analysis
 cohort_path <- 
   file.path(
   project_location, "intermediate_output",
-  paste0("cohort_", site_lowercase, "_", today, ".csv")
+  paste0("cohort_", institution, "_", today, ".csv")
 )
 
 data.table::fwrite(cohort, cohort_path)

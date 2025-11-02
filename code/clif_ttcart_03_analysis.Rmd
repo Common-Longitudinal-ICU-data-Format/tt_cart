@@ -1,5 +1,13 @@
-#Analysis script for CLIF project testing temperature trajectories after CAR-T
-#Requires cohort to be loaded from 01_cohort-----------------------------------
+
+---
+title: "03_analysis"
+output: html_notebook
+---
+
+Analysis script for CLIF project testing temperature trajectories after CAR-T
+Requires cohort to be loaded from 03_temptraj
+
+```{r analysis}
 
 cohort <- cohort %>%
   dplyr::mutate(
@@ -165,21 +173,25 @@ categorical_by_traj <- cohort %>%
   dplyr::ungroup() %>%
   dplyr::arrange(variable, trajectory, level)
 
+```
+
+```{r save final}
+
 cont_var_all_path <- file.path(
-  project_location, "proj_output",
+  project_location, "final_output",
   paste0("continuous_summary_", today, ".csv"))
 
 cat_var_all_path <- file.path(
-  project_location, "proj_output",
+  project_location, "final_output",
   paste0("categorical_summary_", today, ".csv"))
 
 
 cont_var_traj_path <- file.path(
-  project_location, "proj_output",
+  project_location, "final_output",
   paste0("continuous_by_trajectory_", today, ".csv"))
 
 cat_var_traj_path <- file.path(
-  project_location, "proj_output",
+  project_location, "final_output",
   paste0("categorical_by_trajectory_", today, ".csv"))
 
 data.table::fwrite(continuous_all, cont_var_all_path)
@@ -187,5 +199,6 @@ data.table::fwrite(categorical_all, cat_var_all_path)
 data.table::fwrite(continuous_by_traj, cont_var_traj_path)
 data.table::fwrite(categorical_by_traj, cat_var_traj_path)
 
-rm(categorical_all, categorical_by_traj, continuous_all, continuous_by_traj, bin_vars, cat_var_all,
-   cat_var, cont_var)
+rm(categorical_all, categorical_by_traj, continuous_all, continuous_by_traj, bin_vars, cat_var_all)
+
+```

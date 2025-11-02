@@ -176,13 +176,13 @@ Export summaries for Box upload
 temp_hourly_summary_path <- 
   file.path(
   project_location, "final_output",
-  paste0("temp_hourly_summary_", today, ".csv")
+  paste0("temp_hourly_summary_", institution, "_", today, ".csv")
 )
 
 vitals_72h_summary_path <- 
   file.path(
   project_location, "final_output",
-  paste0("vitals_72h_summary_", today, ".csv")
+  paste0("vitals_72h_summary_", institution, "_", today, ".csv")
 )
 
 data.table::fwrite(temp_hourly_summary, temp_hourly_summary_path)
