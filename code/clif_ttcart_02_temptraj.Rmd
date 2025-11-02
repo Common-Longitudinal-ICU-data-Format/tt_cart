@@ -165,6 +165,8 @@ vitals_72h_summary <-
     .groups = "drop"
   )
 
+cohort <- cohort %>% dplyr::left_join(temp_model, by = "patient_id")
+
 ```
 
 Export summaries for Box upload
