@@ -615,22 +615,24 @@ blood_cx <-
                 fluid_category, 
                 organism_category) %>%
   dplyr::inner_join(
-    cohort %>% dplyr::select(patient_id, cart_t0),
-    by = "patient_id"
-  ) %>%
-  dplyr::filter(
-    !is.na(result_dttm),
-    result_dttm >= cart_t0,
-    result_dttm <= cart_t0 + lubridate::days(30)
-  ) %>%
-  dplyr::mutate(
-    cx_positive = as.integer(!is.na(organism_category))
-  ) %>%
-  dplyr::group_by(hospitalization_id) %>%
-  dplyr::summarise(
-    bx_positive_30d = as.integer(any(cx_positive == 1, na.rm = TRUE)),
-    .groups = "drop"
-  )
+    cohort %>% dplyr::select(hospitalization_id, cart_t0),
+    by = "hospitalization_id"
+  ) %>% 
+dplyr::filter(
+  !is.na(result_dttm),
+  result_dttm >= cart_t0,
+  result_dttm <= cart_t0 + lubridate::days(30),
+  !is.na(organism_category),
+  organism_category != "no_growth"
+)
+dplyr::mutate(
+  cx_positive = 1                                                
+) %>%
+dplyr::group_by(hospitalization_id) %>%
+dplyr::summarise(
+  bx_positive_30d = as.integer(any(cx_positive == 1, na.rm = TRUE)),
+  .groups = "drop"
+)
   
 abx_list <- c(
   "amikacin","aztreonam","cefepime","cefiderocol","ceftaroline","ceftazidime",
