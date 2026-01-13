@@ -608,7 +608,7 @@ cohort <- cohort %>%
 
 blood_cx <- 
   data_list$microbiology_culture %>%
-  dplyr::filter(fluid_category == "blood") %>%
+  dplyr::filter(fluid_category == "blood_buffy") %>%
   collect() %>%
   dplyr::select(hospitalization_id, 
                 result_dttm, 
