@@ -662,7 +662,7 @@ abx <- data_list$medication_admin_intermittent %>%
   dplyr::count(patient_id, name = "abx_30d")
 
 cohort <- cohort %>%
-  dplyr::left_join(blood_cx, by = "patient_id") %>%
+  dplyr::left_join(blood_cx, by = "hospitalization_id") %>%
   dplyr::left_join(abx,      by = "patient_id") %>%
   dplyr::mutate(
     bx_positive_30d = tidyr::replace_na(bx_positive_30d, 0L),
