@@ -624,7 +624,7 @@ dplyr::filter(
   result_dttm <= cart_t0 + lubridate::days(30),
   !is.na(organism_category),
   organism_category != "no_growth"
-)
+) |>
 dplyr::mutate(
   cx_positive = 1                                                
 ) %>%
