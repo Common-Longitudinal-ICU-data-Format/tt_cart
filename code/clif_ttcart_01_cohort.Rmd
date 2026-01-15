@@ -608,7 +608,7 @@ cohort <- cohort %>%
 
 blood_cx <- 
   data_list$microbiology_culture %>%
-  dplyr::filter(fluid_category == "blood") %>%
+  dplyr::filter(fluid_category == "blood_buffy") %>%
   collect() %>%
   dplyr::select(hospitalization_id, 
                 result_dttm, 
@@ -624,7 +624,7 @@ dplyr::filter(
   result_dttm <= cart_t0 + lubridate::days(30),
   !is.na(organism_category),
   organism_category != "no_growth"
-)
+) |>
 dplyr::mutate(
   cx_positive = 1                                                
 ) %>%
@@ -662,7 +662,7 @@ abx <- data_list$medication_admin_intermittent %>%
   dplyr::count(patient_id, name = "abx_30d")
 
 cohort <- cohort %>%
-  dplyr::left_join(blood_cx, by = "patient_id") %>%
+  dplyr::left_join(blood_cx, by = "hospitalization_id") %>%
   dplyr::left_join(abx,      by = "patient_id") %>%
   dplyr::mutate(
     bx_positive_30d = tidyr::replace_na(bx_positive_30d, 0L),
