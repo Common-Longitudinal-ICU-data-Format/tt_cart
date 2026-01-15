@@ -102,13 +102,20 @@ temp <-
       temp_c >= 35 & temp_c < 38,
       na.rm = TRUE
     ),
+    pre_temp_abnormal = any(
+      recorded_dttm >= cart_t0 - lubridate::hours(12) &
+      recorded_dttm <  cart_t0 &
+      !is.na(temp_c) &
+      (temp_c < 35 | temp_c >= 38),
+      na.rm = TRUE
+    ),
     post_24h_temp = any(
       recorded_dttm >= cart_t0 + lubridate::hours(24),
       na.rm = TRUE
     ),
     .groups = "drop"
   ) %>%
-  dplyr::mutate(temp_pass = pre_norm_temp & post_24h_temp) %>%
+  dplyr::mutate(temp_pass = pre_norm_temp & post_24h_temp & !pre_temp_abnormal) %>%
   dplyr::group_by(patient_id) %>%
   dplyr::summarise(temp_pass = any(temp_pass, na.rm = TRUE), .groups = "drop")
 
