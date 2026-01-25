@@ -297,11 +297,11 @@ if (analysis_mode == "pooled" && !is.null(pseudo_data) && requireNamespace("geep
     
     df$trajectory_f = factor(df$trajectory, levels = c("NT", "HT", "HFR", "HSR"))
     
-    # 90-day mortality
+    # 90-day mortality (all patients observed to death or 12/31/24)
     model_90d = glm(
       dead_90_01 ~ trajectory_f + age + sex_category + race_eth + 
                    cart_target + vw + easix_fc_cat + infusion_year,
-      data   = fsubset(df, has_90d_fu == 1),
+      data   = df,
       family = binomial
     )
     
