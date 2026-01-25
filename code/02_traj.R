@@ -132,7 +132,7 @@ fig_data_by_traj =
   fungroup() |>
   roworder(trajectory, hour)
 
-save_output(fig_data_by_traj, "fig_temp_by_trajectory", shareable = TRUE)
+save_output(fig_data_by_traj, "fig_temp_by_trajectory", shareable = TRUE, subfolder = "trajectory")
 
 ## figure data by CAR-T product ------------------------------------------------
 
@@ -146,7 +146,7 @@ fig_data_by_product =
   fungroup() |>
   roworder(cart_group, hour)
 
-save_output(fig_data_by_product, "fig_temp_by_product", shareable = TRUE)
+save_output(fig_data_by_product, "fig_temp_by_product", shareable = TRUE, subfolder = "trajectory")
 
 # clean up large temp objects ==================================================
 
