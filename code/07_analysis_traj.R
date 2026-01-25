@@ -164,9 +164,45 @@ if (analysis_mode == "pooled") {
   
 } else {
   
-  # single site calculations would go here
-  # (similar structure, direct from df)
+  ## single site mortality -----------------------------------------------------
   
+  mortality_pooled = 
+    fgroup_by(df, trajectory) |>
+    fsummarize(
+      n_30  = fnobs(dead_30_01),
+      dead_30 = fsum(dead_30_01, na.rm = TRUE),
+      n_90  = fnobs(dead_90_01),
+      dead_90 = fsum(dead_90_01, na.rm = TRUE),
+      n_180 = fnobs(dead_180_01),
+      dead_180 = fsum(dead_180_01, na.rm = TRUE),
+      n_365 = fnobs(dead_365_01),
+      dead_365 = fsum(dead_365_01, na.rm = TRUE)
+    ) |>
+    fungroup() |>
+    fmutate(
+      pct_30  = 100 * dead_30  / n_30,
+      pct_90  = 100 * dead_90  / n_90,
+      pct_180 = 100 * dead_180 / n_180,
+      pct_365 = 100 * dead_365 / n_365
+    )
+  
+  ## single site acute outcomes ------------------------------------------------
+  
+  acute_vars = c("icu_30_01", "imv_30_01", "va_30_01", "bsi_30_01", 
+                 "toci_any_30d", "anakinra_any_30d")
+  
+  acute_pooled = 
+    lapply(acute_vars, \(v) {
+      if (!v %in% names(df)) return(NULL)
+      x = df[[v]]
+      fselect(df, trajectory) |>
+        fmutate(x = x) |>
+        fgroup_by(trajectory) |>
+        fsummarize(n = fnobs(x), n_events = fsum(x, na.rm = TRUE)) |>
+        fungroup() |>
+        fmutate(variable = v, pct = 100 * n_events / n)
+    }) |>
+    rbindlist()
 }
 
 print(mortality_pooled)
