@@ -4,8 +4,7 @@
 # ==============================================================================
 
 # clear environment
-rm(list = ls())
-gc()
+rm(list = ls()); gc()
 
 # record start time
 start_time = Sys.time()
@@ -16,27 +15,27 @@ message("Run started: ", start_time)
 message(paste(rep("=", 60), collapse = ""), "\n")
 
 # source scripts in order
-source("00_setup.R")
+source("code/00_setup.R")
 message("\n", paste(rep("-", 40), collapse = ""), "\n")
 
-source("01_cohort.R")
+source("code/01_cohort.R")
 message("\n", paste(rep("-", 40), collapse = ""), "\n")
 
-source("02_traj.R")
+source("code/02_traj.R")
 message("\n", paste(rep("-", 40), collapse = ""), "\n")
 
-source("03_covariates.R")
+source("code/03_covariates.R")
 message("\n", paste(rep("-", 40), collapse = ""), "\n")
 
-source("04_outcomes.R")
+source("code/04_outcomes.R")
 message("\n", paste(rep("-", 40), collapse = ""), "\n")
 
-source("05_easix.R")
+source("code/05_easix.R")
 message("\n", paste(rep("-", 40), collapse = ""), "\n")
 
-source("06_export.R")
+source("code/06_export.R")
 
-source("07_analysis_traj.R")
+source("code/07_analysis_traj.R")
 
 # report completion
 end_time = Sys.time()
