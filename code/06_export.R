@@ -234,16 +234,21 @@ if (requireNamespace("pseudo", quietly = TRUE)) {
   
   df$pseudo_rmst_365 = pseudo_vals
   
+  # patient-level data for local analysis only
   pseudo_export = fselect(df, 
     patient_id, trajectory, fit_flag,
     age, sex_category, race_eth, cancer_cat, cart_target, vw, easix_fc_cat, infusion_year,
+    cart_hour_precise,
     pseudo_rmst_365
   )
   
-  save_output(pseudo_export, "rmst_pseudo_365", shareable = TRUE, subfolder = "trajectory")
+  save_output(pseudo_export, "rmst_pseudo_365", shareable = FALSE)
+  
+  message("Pseudo-observations saved to intermediate_output/ for use in 07/08 analysis scripts.")
   
 } else {
   message("Package 'pseudo' not installed - skipping RMST.")
+  message("Install with: install.packages('pseudo')")
 }
 
 
