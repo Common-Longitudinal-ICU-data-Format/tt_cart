@@ -37,6 +37,8 @@ source("code/06_export.R")
 
 source("code/07_analysis_traj.R")
 
+source("code/08_analysis_circadian.R")
+
 # report completion
 end_time = Sys.time()
 elapsed  = round(difftime(end_time, start_time, units = "mins"), 2)
