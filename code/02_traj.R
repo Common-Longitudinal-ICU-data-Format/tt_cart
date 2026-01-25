@@ -112,9 +112,7 @@ temp_model_fit =
 
 df = join(df, temp_model_fit, how = "left")
 
-rm(temp_model, temp_model_fit)
-gc()
-
+rm(temp_model, temp_model_fit); gc()
 
 # create figure data for pooling ===============================================
 
