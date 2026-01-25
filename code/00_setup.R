@@ -148,6 +148,8 @@ output_dirs = c(
   "intermediate_output",
   "final_output",
   "upload_to_box",
+  "upload_to_box/trajectory",
+  "upload_to_box/circadian",
   "proj_tables"
 )
 
@@ -171,9 +173,16 @@ today      = format(Sys.Date(), "%y%m%d")
 
 ## standardized save function --------------------------------------------------
 
-save_output = function(obj, name, shareable = FALSE, format = "csv") {
- 
- folder = if (shareable) "upload_to_box" else "intermediate_output"
+save_output = function(obj, name, shareable = FALSE, subfolder = NULL, format = "csv") {
+  
+  # base folder
+  folder = if (shareable) "upload_to_box" else "intermediate_output"
+  
+  # add subfolder if specified (e.g., "trajectory" or "circadian")
+  if (!is.null(subfolder) && shareable) {
+    folder = file.path(folder, subfolder)
+  }
+  
   path = file.path(
     project_location, 
     folder, 
