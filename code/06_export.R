@@ -121,12 +121,12 @@ surv_data =
     
     fgroup_by(df, trajectory) |>
       fsummarize(
-        time_point = t,
         n_at_risk  = fsum(followup_d >= prev_t, na.rm = TRUE),
         n_events   = fsum(died == 1 & time_to_death > prev_t & time_to_death <= t, na.rm = TRUE),
         n_censored = fsum(died == 0 & followup_d > prev_t & followup_d <= t, na.rm = TRUE)
       ) |>
-      fungroup()
+      fungroup() |>
+      fmutate(time_point = t)
   }) |>
   rbindlist()
 
