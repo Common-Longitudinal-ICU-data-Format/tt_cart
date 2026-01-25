@@ -12,6 +12,7 @@
 analysis_mode = "single"  # "single" or "pooled"
 pooled_data_dir = "path/to/upload_to_box/trajectory"  # only used if mode = "pooled"
 
+
 # ==============================================================================
 # SETUP
 # ==============================================================================
@@ -95,14 +96,17 @@ if (analysis_mode == "pooled") {
   
   table1_cont_pooled = 
     lapply(t1_cont_vars, \(v) {
-      fgroup_by(df, trajectory) |>
+      x = df[[v]]
+      fselect(df, trajectory) |>
+        fmutate(x = x) |>
+        fgroup_by(trajectory) |>
         fsummarize(
-          variable = v,
-          n        = fnobs(.env[[v]]),
-          mean     = fmean(df[[v]], na.rm = TRUE),
-          sd       = fsd(df[[v]], na.rm = TRUE)
+          n    = fnobs(x),
+          mean = fmean(x, na.rm = TRUE),
+          sd   = fsd(x, na.rm = TRUE)
         ) |>
-        fungroup()
+        fungroup() |>
+        fmutate(variable = v)
     }) |>
     rbindlist()
   
