@@ -1,434 +1,442 @@
 # ==============================================================================
 # 07_analysis_traj.R
-# Analysis script for trajectory project
-# Can run on single-site data OR pooled multi-site data
+# Trajectory analysis: temperature trajectory → CAR-T outcomes
+# Exports shareable coefficient tables for meta-analysis
 # ==============================================================================
 
-# This script can be run in two modes:
-# 1. SINGLE SITE: After running 00-06, using df in memory
-# 2. POOLED: Loading CSVs from multiple sites
+# check dependencies ===========================================================
 
-# Set mode here:
-analysis_mode = "single"  # "single" or "pooled"
-pooled_data_dir = "path/to/upload_to_box/trajectory"  # only used if mode = "pooled"
-
-
-# ==============================================================================
-# SETUP
-# ==============================================================================
-
-library(data.table)
-library(tidytable)
-library(collapse)
-
-if (analysis_mode == "pooled") {
-  
-  # function to load and stack site files
-  pool_files = function(pattern, data_dir) {
-    files = list.files(data_dir, pattern = pattern, full.names = TRUE)
-    if (length(files) == 0) return(NULL)
-    
-    lapply(files, \(f) {
-      dt = fread(f)
-      # extract site from filename (assumes: name_SITE_date.csv)
-      parts = strsplit(basename(f), "_")[[1]]
-      dt$site = parts[length(parts) - 1]
-      dt
-    }) |> rbindlist(fill = TRUE)
-  }
-  
-  # load pooled data
-  t1_cont     = pool_files("^table1_continuous", pooled_data_dir)
-  t1_cat      = pool_files("^table1_categorical", pooled_data_dir)
-  t2_mort     = pool_files("^table2_mortality", pooled_data_dir)
-  t2_acute    = pool_files("^table2_acute", pooled_data_dir)
-  t2_time     = pool_files("^table2_time", pooled_data_dir)
-  surv_data   = pool_files("^survival_curve_data", pooled_data_dir)
-  pseudo_data = pool_files("^rmst_pseudo", pooled_data_dir)
-  misclass    = pool_files("^sensitivity_misclass", pooled_data_dir)
-  site_summ   = pool_files("^site_summary", pooled_data_dir)
-  
-} else {
-  # single site mode - check df exists
-  if (!exists("df")) stop("Run scripts 00-06 first, or set mode to 'pooled'")
+if (!exists("df") || !exists("save_output")) {
+  stop("Run 00_setup.R through 06_export.R first.", call. = FALSE)
 }
 
+message("Starting 07_analysis_traj.R")
 
-# ==============================================================================
-# TABLE 1: PATIENT CHARACTERISTICS
-# ==============================================================================
+# packages =====================================================================
 
-if (analysis_mode == "pooled") {
+if (!requireNamespace("broom", quietly = TRUE)) install.packages("broom")
+library(broom)
+
+# constants ====================================================================
+
+VARIANTS = c("main", "se_borderline_reassign")
+
+.allowed = list(
+  table1      = c("continuous", "categorical"),
+  table2      = c("binary", "time"),
+  survival    = c("q30d"),
+  models      = c("logistic_coefs", "rmst_coefs"),
+  subgroup    = c("logistic_coefs", "rmst_coefs"),
+  sensitivity = c("logistic_coefs", "rmst_coefs"),
+  diagnostics = c("overall", "by_trajectory")
+)
+
+# helper functions =============================================================
+
+write_artifact = function(dt, analysis, artifact, site,
+                          strata = NULL, variant = NULL,
+                          root = file.path(project_location, "upload_to_box", "trajectory")) {
   
-  ## pool continuous variables -------------------------------------------------
+  stopifnot(analysis %in% names(.allowed), artifact %in% .allowed[[analysis]])
   
-  table1_cont_pooled = t1_cont |>
-    fgroup_by(trajectory, variable) |>
-    fsummarize(
-      n      = fsum(n),
-      n_miss = fsum(n_miss),
-      sum_x  = fsum(sum_x),
-      sum_sq = fsum(sum_x_sq)
-    ) |>
-    fungroup() |>
-    fmutate(
-      mean = sum_x / n,
-      var  = (sum_sq - (sum_x^2 / n)) / (n - 1),
-      sd   = sqrt(var)
-    ) |>
-    fselect(trajectory, variable, n, n_miss, mean, sd)
+  if (!dir.exists(root)) dir.create(root, recursive = TRUE, showWarnings = FALSE)
   
-  ## pool categorical variables ------------------------------------------------
+  parts = paste0(analysis, "-", artifact)
+  if (!is.null(strata) && nzchar(strata)) parts = paste0(parts, "-", strata)
+  if (!is.null(variant) && nzchar(variant)) parts = paste0(parts, "-", variant)
+  fn = paste0(parts, "-", site, ".csv")
   
-  table1_cat_pooled = t1_cat |>
-    fgroup_by(trajectory, variable, category) |>
-    fsummarize(n = fsum(n)) |>
-    fungroup() |>
-    fgroup_by(trajectory, variable) |>
-    fmutate(pct = 100 * n / fsum(n)) |>
-    fungroup()
-  
-} else {
-  
-  ## single site - calculate directly ------------------------------------------
-  
-  t1_cont_vars = c("age", "vw", "easix", "log2_easix")
-  
-  table1_cont_pooled = 
-    lapply(t1_cont_vars, \(v) {
-      x = df[[v]]
-      fselect(df, trajectory) |>
-        fmutate(x = x) |>
-        fgroup_by(trajectory) |>
-        fsummarize(
-          n    = fnobs(x),
-          mean = fmean(x, na.rm = TRUE),
-          sd   = fsd(x, na.rm = TRUE)
-        ) |>
-        fungroup() |>
-        fmutate(variable = v)
-    }) |>
-    rbindlist()
-  
-  t1_cat_vars = c("sex_category", "race_eth", "cart_target", "infusion_year")
-  
-  table1_cat_pooled = 
-    lapply(t1_cat_vars, \(v) {
-      tmp = tidytable(trajectory = df$trajectory, category = as.character(df[[v]]))
-      fgroup_by(tmp, trajectory, category) |>
-        fsummarize(n = fnobs(trajectory)) |>
-        fungroup() |>
-        fgroup_by(trajectory) |>
-        fmutate(pct = 100 * n / fsum(n)) |>
-        fungroup() |>
-        fmutate(variable = v)
-    }) |>
-    rbindlist()
+  path = file.path(root, fn)
+  fwrite(dt, path)
+  message("  Wrote: ", fn)
+  invisible(path)
 }
 
-print(table1_cont_pooled)
-print(table1_cat_pooled)
+# prepare analysis data ========================================================
 
+message("\n== Preparing analysis data ==")
+
+## factors ---------------------------------------------------------------------
+
+df$trajectory_f  = factor(df$trajectory, levels = c("NT", "HT", "HFR", "HSR"))
+df$sex_f         = factor(df$sex_category)
+df$race_eth_f    = factor(df$race_eth, levels = c("nhw", "other"))
+df$cart_target_f = factor(df$cart_target, levels = c("CD19", "BCMA"))
+df$easix_fc_f    = factor(df$easix_fc_cat)
+df$year_f        = factor(df$infusion_year)
+
+## sensitivity: reassign borderline to second_best -----------------------------
+
+df$trajectory_reassign = fifelse(
+  df$fit_flag == "borderline" & !is.na(df$second_best),
+  df$second_best,
+  df$trajectory
+)
+df$trajectory_reassign_f = factor(df$trajectory_reassign, levels = c("NT", "HT", "HFR", "HSR"))
+
+message("  N = ", fnrow(df))
+message("  Borderline fits: ", fsum(df$fit_flag == "borderline", na.rm = TRUE))
 
 # ==============================================================================
-# TABLE 2: OUTCOMES
+# DIAGNOSTICS
 # ==============================================================================
 
-if (analysis_mode == "pooled") {
-  
-  ## mortality -----------------------------------------------------------------
-  
-  mortality_pooled = t2_mort |>
-    fgroup_by(trajectory) |>
-    fsummarize(
-      n_30  = fsum(n_30d_denom),  dead_30  = fsum(n_dead_30),
-      n_90  = fsum(n_90d_denom),  dead_90  = fsum(n_dead_90),
-      n_180 = fsum(n_180d_denom), dead_180 = fsum(n_dead_180),
-      n_365 = fsum(n_365d_denom), dead_365 = fsum(n_dead_365)
-    ) |>
-    fungroup() |>
-    fmutate(
-      pct_30  = 100 * dead_30  / n_30,
-      pct_90  = 100 * dead_90  / n_90,
-      pct_180 = 100 * dead_180 / n_180,
-      pct_365 = 100 * dead_365 / n_365
-    )
-  
-  ## acute outcomes ------------------------------------------------------------
-  
-  acute_pooled = t2_acute |>
-    fgroup_by(trajectory, variable) |>
-    fsummarize(n = fsum(n), n_events = fsum(n_events)) |>
-    fungroup() |>
-    fmutate(pct = 100 * n_events / n)
-  
-} else {
-  
-  ## single site mortality -----------------------------------------------------
-  
-  mortality_pooled = 
+message("\n== Diagnostics ==")
+
+diag_overall = tidytable(
+  site        = site_lowercase,
+  n_total     = fnrow(df),
+  n_cd19      = fsum(df$cart_target == "CD19", na.rm = TRUE),
+  n_bcma      = fsum(df$cart_target == "BCMA", na.rm = TRUE),
+  n_dead_90   = fsum(df$dead_90_01, na.rm = TRUE),
+  n_dead_365  = fsum(df$dead_365_01, na.rm = TRUE),
+  n_icu       = fsum(df$icu_30_01, na.rm = TRUE),
+  n_imv       = fsum(df$imv_30_01, na.rm = TRUE),
+  n_toci      = fsum(df$toci_any_30d, na.rm = TRUE),
+  n_anakinra  = fsum(df$anakinra_any_30d, na.rm = TRUE),
+  rate_dead_90 = fmean(df$dead_90_01, na.rm = TRUE),
+  n_borderline = fsum(df$fit_flag == "borderline", na.rm = TRUE)
+)
+
+write_artifact(diag_overall, "diagnostics", "overall", site_lowercase)
+
+diag_by_traj = 
+  fgroup_by(df, trajectory) |>
+  fsummarize(
+    n           = fnobs(patient_id),
+    n_dead_90   = fsum(dead_90_01, na.rm = TRUE),
+    n_dead_365  = fsum(dead_365_01, na.rm = TRUE),
+    n_icu       = fsum(icu_30_01, na.rm = TRUE),
+    n_toci      = fsum(toci_any_30d, na.rm = TRUE),
+    n_anakinra  = fsum(anakinra_any_30d, na.rm = TRUE),
+    rate_dead_90 = fmean(dead_90_01, na.rm = TRUE)
+  ) |>
+  fungroup() |>
+  fmutate(site = site_lowercase)
+
+write_artifact(diag_by_traj, "diagnostics", "by_trajectory", site_lowercase)
+
+# ==============================================================================
+# TABLE 1: PATIENT CHARACTERISTICS BY TRAJECTORY
+# ==============================================================================
+
+message("\n== Table 1 ==")
+
+## continuous variables --------------------------------------------------------
+
+t1_cont_vars = c("age", "vw", "easix", "log2_easix", "wbc_infusion", "lymph_abs_infusion",
+                 "baseline_ldh", "baseline_crp", "baseline_ferritin")
+
+t1_continuous = 
+  lapply(t1_cont_vars, \(v) {
+    if (!v %in% names(df)) return(NULL)
+    x = df[[v]]
+    fselect(df, trajectory) |>
+      fmutate(x = x, x_sq = x^2) |>
+      fgroup_by(trajectory) |>
+      fsummarize(
+        n      = fnobs(x),
+        n_miss = fsum(is.na(x)),
+        sum_x  = fsum(x, na.rm = TRUE),
+        sum_x_sq = fsum(x_sq, na.rm = TRUE)
+      ) |>
+      fungroup() |>
+      fmutate(variable = v, site = site_lowercase)
+  }) |>
+  rbindlist()
+
+write_artifact(t1_continuous, "table1", "continuous", site_lowercase)
+
+## categorical variables -------------------------------------------------------
+
+t1_cat_vars = c("sex_category", "race_eth", "cancer_cat", "cart_target",
+                "easix_fc_cat", "hct_01", "infusion_year")
+
+t1_categorical = 
+  lapply(t1_cat_vars, \(v) {
+    if (!v %in% names(df)) return(NULL)
+    tmp = tidytable(trajectory = df$trajectory, cat_val = as.character(df[[v]]))
+    fgroup_by(tmp, trajectory, cat_val) |>
+      fsummarize(n = fnobs(trajectory)) |>
+      fungroup() |>
+      fmutate(variable = v, site = site_lowercase) |>
+      frename(category = cat_val)
+  }) |>
+  rbindlist()
+
+write_artifact(t1_categorical, "table1", "categorical", site_lowercase)
+
+# ==============================================================================
+# TABLE 2: OUTCOMES BY TRAJECTORY
+# ==============================================================================
+
+message("\n== Table 2 ==")
+
+## binary outcomes -------------------------------------------------------------
+
+t2_binary_vars = c("dead_30_01", "dead_90_01", "dead_180_01", "dead_365_01",
+                   "icu_30_01", "imv_30_01", "va_30_01", "bsi_30_01",
+                   "toci_any_30d", "anakinra_any_30d", "steroid_any_72h",
+                   "severe_icaht_01", "hyperferritin_5k_01", "hyperferritin_10k_01")
+
+t2_binary = 
+  lapply(t2_binary_vars, \(v) {
+    if (!v %in% names(df)) return(NULL)
+    x = df[[v]]
+    fselect(df, trajectory) |>
+      fmutate(x = x) |>
+      fgroup_by(trajectory) |>
+      fsummarize(n = fnobs(x), n_events = fsum(x, na.rm = TRUE)) |>
+      fungroup() |>
+      fmutate(variable = v, site = site_lowercase)
+  }) |>
+  rbindlist()
+
+write_artifact(t2_binary, "table2", "binary", site_lowercase)
+
+## time variables --------------------------------------------------------------
+
+t2_time_vars = c("los_hospital_d", "h_until_toci", "h_until_anakinra", "h_until_steroids")
+
+t2_time = 
+  lapply(t2_time_vars, \(v) {
+    if (!v %in% names(df)) return(NULL)
+    x = df[[v]]
+    fselect(df, trajectory) |>
+      fmutate(x = x, x_sq = x^2) |>
+      fgroup_by(trajectory) |>
+      fsummarize(
+        n        = fnobs(x),
+        sum_x    = fsum(x, na.rm = TRUE),
+        sum_x_sq = fsum(x_sq, na.rm = TRUE)
+      ) |>
+      fungroup() |>
+      fmutate(variable = v, site = site_lowercase)
+  }) |>
+  rbindlist()
+
+write_artifact(t2_time, "table2", "time", site_lowercase)
+
+# ==============================================================================
+# SURVIVAL DATA (for KM curves)
+# ==============================================================================
+
+message("\n== Survival data ==")
+
+time_points = seq(0, 365, by = 30)
+
+surv_q30d = 
+  lapply(time_points, \(t) {
+    prev_t = ifelse(t == 0, 0, t - 30)
     fgroup_by(df, trajectory) |>
-    fsummarize(
-      n_30  = fnobs(dead_30_01),
-      dead_30 = fsum(dead_30_01, na.rm = TRUE),
-      n_90  = fnobs(dead_90_01),
-      dead_90 = fsum(dead_90_01, na.rm = TRUE),
-      n_180 = fnobs(dead_180_01),
-      dead_180 = fsum(dead_180_01, na.rm = TRUE),
-      n_365 = fnobs(dead_365_01),
-      dead_365 = fsum(dead_365_01, na.rm = TRUE)
-    ) |>
-    fungroup() |>
-    fmutate(
-      pct_30  = 100 * dead_30  / n_30,
-      pct_90  = 100 * dead_90  / n_90,
-      pct_180 = 100 * dead_180 / n_180,
-      pct_365 = 100 * dead_365 / n_365
-    )
-  
-  ## single site acute outcomes ------------------------------------------------
-  
-  acute_vars = c("icu_30_01", "imv_30_01", "va_30_01", "bsi_30_01", 
-                 "toci_any_30d", "anakinra_any_30d")
-  
-  acute_pooled = 
-    lapply(acute_vars, \(v) {
-      if (!v %in% names(df)) return(NULL)
-      x = df[[v]]
-      fselect(df, trajectory) |>
-        fmutate(x = x) |>
-        fgroup_by(trajectory) |>
-        fsummarize(n = fnobs(x), n_events = fsum(x, na.rm = TRUE)) |>
-        fungroup() |>
-        fmutate(variable = v, pct = 100 * n_events / n)
-    }) |>
-    rbindlist()
-}
+      fsummarize(
+        n_at_risk  = fsum(followup_d >= prev_t, na.rm = TRUE),
+        n_events   = fsum(died == 1 & time_to_death > prev_t & time_to_death <= t, na.rm = TRUE),
+        n_censored = fsum(died == 0 & followup_d > prev_t & followup_d <= t, na.rm = TRUE)
+      ) |>
+      fungroup() |>
+      fmutate(time_point = t, site = site_lowercase)
+  }) |>
+  rbindlist()
 
-print(mortality_pooled)
-print(acute_pooled)
-
+write_artifact(surv_q30d, "survival", "q30d", site_lowercase)
 
 # ==============================================================================
-# SURVIVAL CURVES (POOLED KM RECONSTRUCTION)
+# MAIN MODELS: TRAJECTORY → OUTCOMES
 # ==============================================================================
 
-if (analysis_mode == "pooled" && !is.null(surv_data)) {
-  
-  # This is approximate - for proper pooled KM, use IPD meta-analysis
-  # But this gives reasonable visualization
-  
-  surv_pooled = surv_data |>
-    fgroup_by(trajectory, time_point) |>
-    fsummarize(
-      n_at_risk  = fsum(n_at_risk),
-      n_events   = fsum(n_events),
-      n_censored = fsum(n_censored)
-    ) |>
-    fungroup() |>
-    roworder(trajectory, time_point)
-  
-  # calculate hazard and survival
-  surv_pooled = surv_pooled |>
-    fgroup_by(trajectory) |>
-    fmutate(
-      hazard   = n_events / n_at_risk,
-      surv_prob = cumprod(1 - hazard)
-    ) |>
-    fungroup()
-  
-  print(surv_pooled)
-  
-  # example plot (requires ggplot2)
-  # library(ggplot2)
-  # ggplot(surv_pooled, aes(x = time_point, y = surv_prob, color = trajectory)) +
-  #   geom_step() +
-  #   labs(x = "Days since CAR-T", y = "Survival probability") +
-  #   theme_minimal()
-}
+message("\n== Main models ==")
 
+## logistic regression for binary outcomes -------------------------------------
 
-# ==============================================================================
-# RMST PSEUDO-REGRESSION
-# ==============================================================================
+logistic_outcomes = list(
+  list(name = "dead_90",   var = "dead_90_01"),
+  list(name = "dead_365",  var = "dead_365_01"),
+  list(name = "icu_30",    var = "icu_30_01"),
+  list(name = "imv_30",    var = "imv_30_01"),
+  list(name = "va_30",     var = "va_30_01"),
+  list(name = "bsi_30",    var = "bsi_30_01"),
+  list(name = "toci",      var = "toci_any_30d"),
+  list(name = "anakinra",  var = "anakinra_any_30d")
+)
 
-if (analysis_mode == "pooled" && !is.null(pseudo_data) && requireNamespace("geepack", quietly = TRUE)) {
+logistic_results = lapply(logistic_outcomes, \(o) {
   
-  library(geepack)
+  if (!o$var %in% names(df)) return(NULL)
   
-  # prep data - trajectory as factor with NT as reference
-  pseudo_data$trajectory = factor(pseudo_data$trajectory, levels = c("NT", "HT", "HFR", "HSR"))
-  pseudo_data$easix_fc_cat = factor(pseudo_data$easix_fc_cat)
+  formula = as.formula(paste(
+    o$var, "~ trajectory_f + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f"
+  ))
   
-  # 90-day RMST model
-  model_rmst90 = geeglm(
-    pseudo_rmst_90 ~ trajectory + age + sex_category + race_eth + 
-                     cart_target + vw + easix_fc_cat + infusion_year,
-    data    = pseudo_data,
-    id      = site,
-    family  = gaussian,
-    corstr  = "exchangeable"
-  )
+  model = tryCatch(glm(formula, data = df, family = binomial), error = function(e) NULL)
+  if (is.null(model)) return(NULL)
   
-  cat("\n=== 90-day RMST Model ===\n")
-  print(summary(model_rmst90))
-  
-  # 365-day RMST model (restricted to those with follow-up)
-  pseudo_365 = fsubset(pseudo_data, !is.na(pseudo_rmst_365))
-  
-  if (fnrow(pseudo_365) > 50) {
-    model_rmst365 = geeglm(
-      pseudo_rmst_365 ~ trajectory + age + sex_category + race_eth + 
-                        cart_target + vw + easix_fc_cat + infusion_year,
-      data    = pseudo_365,
-      id      = site,
-      family  = gaussian,
-      corstr  = "exchangeable"
-    )
-    
-    cat("\n=== 365-day RMST Model ===\n")
-    print(summary(model_rmst365))
-  }
-  
-} else if (analysis_mode == "single") {
-  
-  # single site logistic regression
-  if (requireNamespace("broom", quietly = TRUE)) {
-    
-    df$trajectory_f = factor(df$trajectory, levels = c("NT", "HT", "HFR", "HSR"))
-    
-    # 90-day mortality (all patients observed to death or 12/31/24)
-    model_90d = glm(
-      dead_90_01 ~ trajectory_f + age + sex_category + race_eth + 
-                   cart_target + vw + easix_fc_cat + infusion_year,
-      data   = df,
-      family = binomial
-    )
-    
-    cat("\n=== 90-day Mortality (Logistic) ===\n")
-    print(broom::tidy(model_90d, exponentiate = TRUE, conf.int = TRUE))
-    
-    # ICU admission
-    model_icu = glm(
-      icu_30_01 ~ trajectory_f + age + sex_category + race_eth + 
-                  cart_target + vw + easix_fc_cat + infusion_year,
-      data   = df,
-      family = binomial
-    )
-    
-    cat("\n=== ICU Admission (Logistic) ===\n")
-    print(broom::tidy(model_icu, exponentiate = TRUE, conf.int = TRUE))
-  }
-}
+  tidy(model, exponentiate = TRUE, conf.int = TRUE) |>
+    as.data.table() |>
+    fmutate(outcome = o$name, site = site_lowercase, n = nobs(model))
+})
 
+logistic_coefs = rbindlist(logistic_results, fill = TRUE)
+write_artifact(logistic_coefs, "models", "logistic_coefs", site_lowercase)
 
-# ==============================================================================
-# SENSITIVITY: MISCLASSIFICATION
-# ==============================================================================
-
-if (analysis_mode == "pooled" && !is.null(misclass)) {
-  
-  misclass_pooled = misclass |>
-    fgroup_by(trajectory, second_best, fit_flag) |>
-    fsummarize(
-      n         = fsum(n),
-      dead_90   = fsum(dead_90_n),
-      icu_30    = fsum(icu_30_n),
-      toci      = fsum(toci_n),
-      anakinra  = fsum(anakinra_n)
-    ) |>
-    fungroup() |>
-    fmutate(
-      pct_dead_90 = 100 * dead_90 / n,
-      pct_icu     = 100 * icu_30 / n,
-      pct_toci    = 100 * toci / n
-    )
-  
-  cat("\n=== Misclassification Sensitivity ===\n")
-  print(misclass_pooled)
-  
-  # compare clear vs borderline within each trajectory
-  sens_comparison = misclass_pooled |>
-    fgroup_by(trajectory, fit_flag) |>
-    fsummarize(
-      n         = fsum(n),
-      dead_90   = fsum(dead_90),
-      pct_dead  = 100 * fsum(dead_90) / fsum(n)
-    ) |>
-    fungroup()
-  
-  print(sens_comparison)
-}
-
-
-# ==============================================================================
-# STRATIFIED ANALYSIS: CD19 vs BCMA
-# ==============================================================================
-
-if (analysis_mode == "single") {
-  
-  cat("\n=== Stratified by CAR-T Target ===\n")
-  
-  # CD19 cohort
-  df_cd19 = fsubset(df, cart_target == "CD19")
-  cat("\nCD19 cohort N:", fnrow(df_cd19), "\n")
-  
-  traj_by_target = df |>
-    fgroup_by(cart_target, trajectory) |>
-    fsummarize(
-      n        = fnobs(patient_id),
-      dead_90  = fsum(dead_90_01, na.rm = TRUE),
-      icu_30   = fsum(icu_30_01, na.rm = TRUE)
-    ) |>
-    fungroup() |>
-    fmutate(
-      pct_dead = 100 * dead_90 / n,
-      pct_icu  = 100 * icu_30 / n
-    )
-  
-  print(traj_by_target)
-}
-
-
-# ==============================================================================
-# RMST PSEUDO-REGRESSION (TRAJECTORY → SURVIVAL)
-# ==============================================================================
-
-cat("\n=== RMST Pseudo-Regression: Trajectory → 365-day Survival ===\n")
+## RMST pseudo-regression ------------------------------------------------------
 
 if ("pseudo_rmst_365" %in% names(df)) {
   
-  # model: trajectory → RMST, adjusted
   rmst_model = tryCatch({
     lm(pseudo_rmst_365 ~ trajectory_f + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f,
        data = df)
   }, error = function(e) NULL)
   
   if (!is.null(rmst_model)) {
-    
-    cat("\nAdjusted RMST differences (days) vs NT reference:\n")
-    rmst_results = broom::tidy(rmst_model, conf.int = TRUE)
-    
-    # print trajectory effects
-    traj_rows = rmst_results[grepl("trajectory", rmst_results$term), ]
-    print(traj_rows[, c("term", "estimate", "conf.low", "conf.high", "p.value")])
-    
-    # export coefficients for meta-analysis
-    rmst_coefs = rmst_results |>
+    rmst_coefs = tidy(rmst_model, conf.int = TRUE) |>
       as.data.table() |>
-      fmutate(
-        model = "rmst365_trajectory",
-        site  = site_lowercase,
-        n     = nobs(rmst_model)
-      )
+      fmutate(outcome = "rmst_365", site = site_lowercase, n = nobs(rmst_model))
     
-    save_output(rmst_coefs, "rmst_coefs_trajectory", shareable = TRUE, subfolder = "trajectory")
-    cat("\nCoefficients exported for meta-analysis.\n")
+    write_artifact(rmst_coefs, "models", "rmst_coefs", site_lowercase)
   }
-  
 } else {
-  cat("pseudo_rmst_365 not found - run 06_export.R with 'pseudo' package installed.\n")
+  message("  pseudo_rmst_365 not found - skipping RMST")
 }
 
+# ==============================================================================
+# SUBGROUP: CD19 vs BCMA
+# ==============================================================================
+
+message("\n== Subgroup: CD19 vs BCMA ==")
+
+for (target in c("CD19", "BCMA")) {
+  
+  df_sub = fsubset(df, cart_target == target)
+  n_sub = fnrow(df_sub)
+  
+  if (n_sub < 30) {
+    message("  ", target, ": insufficient N (", n_sub, ")")
+    next
+  }
+  
+  message("  ", target, ": N = ", n_sub)
+  
+  # logistic
+  sub_logistic = lapply(logistic_outcomes, \(o) {
+    if (!o$var %in% names(df_sub)) return(NULL)
+    
+    # remove cart_target from model since we're stratified
+    formula = as.formula(paste(
+      o$var, "~ trajectory_f + age + sex_f + race_eth_f + vw + easix_fc_f + year_f"
+    ))
+    
+    model = tryCatch(glm(formula, data = df_sub, family = binomial), error = function(e) NULL)
+    if (is.null(model)) return(NULL)
+    
+    tidy(model, exponentiate = TRUE, conf.int = TRUE) |>
+      as.data.table() |>
+      fmutate(outcome = o$name, site = site_lowercase, n = nobs(model), subgroup = target)
+  })
+  
+  sub_coefs = rbindlist(sub_logistic, fill = TRUE)
+  if (nrow(sub_coefs) > 0) {
+    write_artifact(sub_coefs, "subgroup", "logistic_coefs", site_lowercase, strata = tolower(target))
+  }
+  
+  # RMST
+  if ("pseudo_rmst_365" %in% names(df_sub)) {
+    rmst_sub = tryCatch({
+      lm(pseudo_rmst_365 ~ trajectory_f + age + sex_f + race_eth_f + vw + easix_fc_f + year_f,
+         data = df_sub)
+    }, error = function(e) NULL)
+    
+    if (!is.null(rmst_sub)) {
+      rmst_sub_coefs = tidy(rmst_sub, conf.int = TRUE) |>
+        as.data.table() |>
+        fmutate(outcome = "rmst_365", site = site_lowercase, n = nobs(rmst_sub), subgroup = target)
+      
+      write_artifact(rmst_sub_coefs, "subgroup", "rmst_coefs", site_lowercase, strata = tolower(target))
+    }
+  }
+}
+
+# ==============================================================================
+# SENSITIVITY: BORDERLINE REASSIGNMENT
+# ==============================================================================
+
+message("\n== Sensitivity: borderline reassignment ==")
+
+n_reassigned = fsum(df$trajectory != df$trajectory_reassign, na.rm = TRUE)
+message("  Reassigned: ", n_reassigned, " patients")
+
+if (n_reassigned > 0) {
+  
+  # logistic with reassigned trajectory
+  sens_logistic = lapply(logistic_outcomes, \(o) {
+    if (!o$var %in% names(df)) return(NULL)
+    
+    formula = as.formula(paste(
+      o$var, "~ trajectory_reassign_f + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f"
+    ))
+    
+    model = tryCatch(glm(formula, data = df, family = binomial), error = function(e) NULL)
+    if (is.null(model)) return(NULL)
+    
+    tidy(model, exponentiate = TRUE, conf.int = TRUE) |>
+      as.data.table() |>
+      fmutate(
+        term = gsub("trajectory_reassign_f", "trajectory_f", term),
+        outcome = o$name, 
+        site = site_lowercase, 
+        n = nobs(model),
+        variant = "borderline_reassign"
+      )
+  })
+  
+  sens_coefs = rbindlist(sens_logistic, fill = TRUE)
+  write_artifact(sens_coefs, "sensitivity", "logistic_coefs", site_lowercase, variant = "borderline_reassign")
+  
+  # RMST with reassigned
+  if ("pseudo_rmst_365" %in% names(df)) {
+    rmst_sens = tryCatch({
+      lm(pseudo_rmst_365 ~ trajectory_reassign_f + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f,
+         data = df)
+    }, error = function(e) NULL)
+    
+    if (!is.null(rmst_sens)) {
+      rmst_sens_coefs = tidy(rmst_sens, conf.int = TRUE) |>
+        as.data.table() |>
+        fmutate(
+          term = gsub("trajectory_reassign_f", "trajectory_f", term),
+          outcome = "rmst_365",
+          site = site_lowercase,
+          n = nobs(rmst_sens),
+          variant = "borderline_reassign"
+        )
+      
+      write_artifact(rmst_sens_coefs, "sensitivity", "rmst_coefs", site_lowercase, variant = "borderline_reassign")
+    }
+  }
+}
+
+# ==============================================================================
+# PRINT SUMMARY
+# ==============================================================================
+
+message("\n== Summary ==")
+
+cat("\nTrajectory distribution:\n")
+print(table(df$trajectory))
+
+cat("\n90-day mortality by trajectory:\n")
+mort_tbl = df |>
+  fgroup_by(trajectory) |>
+  fsummarize(n = fnobs(dead_90_01), deaths = fsum(dead_90_01, na.rm = TRUE)) |>
+  fmutate(pct = round(100 * deaths / n, 1))
+print(mort_tbl)
+
+if (exists("logistic_coefs") && nrow(logistic_coefs) > 0) {
+  cat("\nAdjusted ORs for 90-day mortality (trajectory effects):\n")
+  traj_ors = logistic_coefs[outcome == "dead_90" & grepl("trajectory", term), 
+                            .(term, estimate, conf.low, conf.high, p.value)]
+  print(traj_ors)
+}
 
 message("\n07_analysis_traj.R complete.")
+message("Artifacts written to: ", file.path(project_location, "upload_to_box", "trajectory"))
