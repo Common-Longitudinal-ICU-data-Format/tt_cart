@@ -272,7 +272,7 @@ temp = fsubset(temp, joined_hosp_id %in% df$joined_hosp_id)
 
 print(exclusions)
 
-save_output(exclusions, "exclusion_flow", shareable = TRUE)
+save_output(exclusions, "exclusion_flow", shareable = TRUE, subfolder = "trajectory")
 
 
 # add time of day (local) ======================================================
