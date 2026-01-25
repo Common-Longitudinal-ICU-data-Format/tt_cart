@@ -540,7 +540,7 @@ blood_cx_traj =
   fungroup() |>
   roworder(trajectory, -n)
 
-save_output(blood_cx_traj, "blood_culture_bugs_by_trajectory", shareable = TRUE)
+save_output(blood_cx_traj, "blood_culture_bugs_by_trajectory", shareable = TRUE, subfolder = "trajectory")
 
 rm(blood_cx, blood_cx_traj)
 gc()
@@ -550,7 +550,7 @@ gc()
 
 df = fselect(df, -discharge_category, -discharge_category_clean)
 
-save_output(labs_trend_export, "lab_trends_by_trajectory", shareable = TRUE)
+save_output(labs_trend_export, "lab_trends_by_trajectory", shareable = TRUE, subfolder = "trajectory")
 
 rm(labs_trend_export)
 gc()
