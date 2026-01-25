@@ -2,7 +2,7 @@
 # 04_outcomes.R
 # Outcomes and treatment variables for CAR-T project
 # Requires: df, hid_jid_crosswalk, anchor_df from prior scripts
-# Outputs: outcomes added to df, blood culture table by trajectory
+# Outputs: outcomes added to df, blood culture table by trajectory, lab trends
 # ==============================================================================
 
 # check dependencies ===========================================================
@@ -12,6 +12,7 @@ if (!exists("df") || !exists("hid_jid_crosswalk") || !exists("anchor_df") || !ex
 }
 
 message("Starting 04_outcomes.R")
+
 
 # death outcomes ===============================================================
 
@@ -34,9 +35,11 @@ df$dead_90_01    = as.integer(!is.na(df$time_to_death) & df$time_to_death <= 90)
 df$dead_180_01   = as.integer(!is.na(df$time_to_death) & df$time_to_death <= 180)
 df$dead_365_01   = as.integer(!is.na(df$time_to_death) & df$time_to_death <= 365)
 
+
 # length of stay ===============================================================
 
 df$los_hospital_d = as.numeric(difftime(df$discharge_dttm, df$admission_dttm, units = "days"))
+
 
 # ICU outcomes =================================================================
 
@@ -119,7 +122,174 @@ df$icu_30_01 = case_when(
   TRUE                        ~ 0L
 )
 
-rm(vaso_flag, resp_flag, imv_flag, icu_flag); gc()
+rm(vaso_flag, resp_flag, imv_flag, icu_flag)
+gc()
+
+
+# lab outcomes =================================================================
+
+## define labs of interest -----------------------------------------------------
+
+lab_categories = c(
+  "ldh", "crp", "ferritin", "wbc", "lymphocytes_absolute",
+  "hemoglobin", "platelet_count", "neutrophils_absolute"
+)
+
+## load all relevant labs ------------------------------------------------------
+
+message("Loading lab data...")
+
+labs_raw = 
+ data_list$labs |>
+  dplyr::filter(lab_category %in% lab_categories) |>
+  dplyr::filter(hospitalization_id %in% 
+    (fsubset(hid_jid_crosswalk, patient_id %in% df$patient_id) |> pull(hospitalization_id))
+  ) |>
+  dplyr::select(hospitalization_id, lab_result_dttm, lab_category, lab_value_numeric) |>
+  dplyr::collect()
+
+labs_raw = 
+  join(labs_raw, hid_jid_crosswalk, how = "inner", multiple = TRUE) |>
+  fselect(patient_id, lab_dttm = lab_result_dttm, lab_category, lab_value = lab_value_numeric) |>
+  funique()
+
+labs_raw = 
+  join(labs_raw, anchor_df, how = "inner", multiple = TRUE) |>
+  fmutate(
+    d_since_cart = as.integer(floor(as.numeric(difftime(lab_dttm, cart_t0, units = "days"))))
+  )
+
+
+## baseline labs (day -1 to day 0, closest to infusion) ------------------------
+
+message("Calculating baseline labs...")
+
+baseline_labs = 
+  fsubset(labs_raw, d_since_cart >= -1 & d_since_cart <= 0) |>
+  fmutate(time_to_cart = abs(as.numeric(difftime(lab_dttm, cart_t0, units = "hours")))) |>
+  roworder(patient_id, lab_category, time_to_cart) |>
+  fgroup_by(patient_id, lab_category) |>
+  ffirst() |>
+  fselect(patient_id, lab_category, lab_value) |>
+  pivot_wider(
+    names_from   = lab_category,
+    values_from  = lab_value,
+    names_prefix = "baseline_"
+  )
+
+df = join(df, baseline_labs, how = "left", multiple = FALSE)
+
+rm(baseline_labs)
+gc()
+
+
+## hematotoxicity (ICAHT) - nadirs in day 0-30 ---------------------------------
+
+message("Calculating hematotoxicity nadirs...")
+
+hematox_labs = fsubset(labs_raw, d_since_cart >= 0 & d_since_cart <= 30)
+
+### ANC nadir
+anc_nadir = 
+  fsubset(hematox_labs, lab_category == "neutrophils_absolute") |>
+  fgroup_by(patient_id) |>
+  fsummarize(anc_nadir = fmin(lab_value, na.rm = TRUE)) |>
+  fungroup()
+
+### platelet nadir
+plt_nadir = 
+  fsubset(hematox_labs, lab_category == "platelet_count") |>
+  fgroup_by(patient_id) |>
+  fsummarize(plt_nadir = fmin(lab_value, na.rm = TRUE)) |>
+  fungroup()
+
+### hemoglobin nadir
+hgb_nadir = 
+  fsubset(hematox_labs, lab_category == "hemoglobin") |>
+  fgroup_by(patient_id) |>
+  fsummarize(hgb_nadir = fmin(lab_value, na.rm = TRUE)) |>
+  fungroup()
+
+### combine nadirs
+df = join(df, anc_nadir, how = "left", multiple = FALSE)
+df = join(df, plt_nadir, how = "left", multiple = FALSE)
+df = join(df, hgb_nadir, how = "left", multiple = FALSE)
+
+### ICAHT severity (simplified - based on ANC and platelets)
+### Grade 1: ANC <1.0 or Plt <75
+### Grade 2: ANC <0.5 or Plt <50
+### Grade 3: ANC <0.2 or Plt <25
+### Grade 4: ANC <0.1 or Plt <10
+
+df = df |>
+  fmutate(
+    # ANC in 10^9/L, platelets in 10^9/L (CLIF standard)
+    icaht_grade = case_when(
+      anc_nadir < 0.1 | plt_nadir < 10   ~ 4L,
+      anc_nadir < 0.2 | plt_nadir < 25   ~ 3L,
+      anc_nadir < 0.5 | plt_nadir < 50   ~ 2L,
+      anc_nadir < 1.0 | plt_nadir < 75   ~ 1L,
+      TRUE                               ~ 0L
+    ),
+    severe_icaht_01 = as.integer(icaht_grade >= 3)
+  )
+
+rm(anc_nadir, plt_nadir, hgb_nadir, hematox_labs)
+gc()
+
+
+## hyperferritinemia (HLH surrogate) -------------------------------------------
+
+message("Calculating hyperferritinemia...")
+
+ferritin_max = 
+  fsubset(labs_raw, lab_category == "ferritin" & d_since_cart >= 0 & d_since_cart <= 30) |>
+  fgroup_by(patient_id) |>
+  fsummarize(ferritin_max_30d = fmax(lab_value, na.rm = TRUE)) |>
+  fungroup()
+
+df = join(df, ferritin_max, how = "left", multiple = FALSE)
+
+df = df |>
+  fmutate(
+    hyperferritin_5k_01  = as.integer(!is.na(ferritin_max_30d) & ferritin_max_30d >= 5000),
+    hyperferritin_10k_01 = as.integer(!is.na(ferritin_max_30d) & ferritin_max_30d >= 10000)
+  )
+
+rm(ferritin_max)
+gc()
+
+
+## lab trends by day (for export) ----------------------------------------------
+
+message("Calculating daily lab trends...")
+
+labs_daily = 
+  fsubset(labs_raw, d_since_cart >= 0 & d_since_cart <= 30) |>
+  fgroup_by(patient_id, lab_category, d_since_cart) |>
+  fsummarize(lab_value = fmean(lab_value, na.rm = TRUE)) |>
+  fungroup()
+
+### add trajectory for grouping
+labs_daily = join(labs_daily, fselect(df, patient_id, trajectory), how = "inner")
+
+### aggregate by trajectory and day
+labs_trend_by_traj = 
+  fgroup_by(labs_daily, trajectory, lab_category, d_since_cart) |>
+  fsummarize(
+    n       = fnobs(lab_value),
+    sum_x   = fsum(lab_value, na.rm = TRUE),
+    sum_x_sq = fsum(lab_value^2, na.rm = TRUE)
+  ) |>
+  fungroup() |>
+  roworder(lab_category, trajectory, d_since_cart)
+
+### save for export (will be picked up in 06_export.R)
+labs_trend_export = labs_trend_by_traj
+
+rm(labs_daily, labs_trend_by_traj, labs_raw)
+gc()
+
 
 # medication outcomes ==========================================================
 
@@ -203,8 +373,6 @@ apap =
 
 ## steroids --------------------------------------------------------------------
 
-### prep conversion data frame -------------------------------------------------
-
 steroid_map = tidytable(
   med_category = c(
     "dexamethasone", "betamethasone", "methylprednisolone", 
@@ -212,8 +380,6 @@ steroid_map = tidytable(
   ),
   dex_factor = c(1.0, 1.25, 0.1875, 0.15, 0.15, 0.0375)
 )
-
-### prep patient weights -------------------------------------------------------
 
 weight = 
   data_list$vitals |>
@@ -239,19 +405,11 @@ weight =
   fmutate(weight_kg = fifelse(is.na(weight_kg), fmedian(weight_kg, na.rm = TRUE), weight_kg)) |>
   fselect(patient_id, weight_kg) 
 
-### steroid table --------------------------------------------------------------
-
 steroid_admin = 
   data_list$medication_admin_intermittent |>
   dplyr::filter(!is.na(med_dose) & med_group == "steroid") |>
   dplyr::filter(admin_dttm >= start_date) |>
-  dplyr::select(
-    hospitalization_id, 
-    admin_dttm, 
-    med_category, 
-    med_dose, 
-    med_dose_unit
-  ) |>
+  dplyr::select(hospitalization_id, admin_dttm, med_category, med_dose, med_dose_unit) |>
   dplyr::collect() 
 
 steroid_admin = 
@@ -263,8 +421,6 @@ steroid_admin =
   join(steroid_admin, anchor_df, how = "inner", multiple = TRUE) |>
   fsubset(admin_dttm >= cart_t0) |>
   fsubset(admin_dttm <= cart_t0 + ddays(30))
-
-### convert steroids to dexamethasone equivalents per day ----------------------
 
 steroid_admin = 
   join(steroid_admin, weight, how = "left", multiple = FALSE) |>
@@ -315,11 +471,11 @@ df$h_until_steroids     = as.numeric(difftime(df$steroid_first, df$admin_dttm), 
 
 df = fselect(df, -steroid_first)
 
-rm(toci, anakinra, apap, weight, steroid, steroid_admin, steroid_daily, steroid_map); gc()
+rm(toci, anakinra, apap, weight, steroid, steroid_admin, steroid_daily, steroid_map)
+gc()
+
 
 # antibiotics and cultures =====================================================
-
-## antibiotics -----------------------------------------------------------------
 
 abx_list = c(
   "amikacin", "aztreonam", "cefepime", "cefiderocol", "ceftaroline", "ceftazidime",
@@ -351,7 +507,8 @@ abx =
 
 df$abx_30_01 = fifelse(df$patient_id %in% abx$patient_id, 1L, 0L)
 
-rm(abx, abx_list); gc()
+rm(abx, abx_list)
+gc()
 
 ## blood cultures --------------------------------------------------------------
 
@@ -376,8 +533,6 @@ blood_cx =
 
 df$bsi_30_01 = fifelse(df$patient_id %in% blood_cx$patient_id, 1L, 0L)
 
-## blood culture bugs by trajectory group --------------------------------------
-
 blood_cx_traj = 
   join(blood_cx, fselect(df, patient_id, trajectory), how = "inner") |>
   fgroup_by(trajectory, organism_category) |>
@@ -387,10 +542,17 @@ blood_cx_traj =
 
 save_output(blood_cx_traj, "blood_culture_bugs_by_trajectory", shareable = TRUE)
 
-rm(blood_cx, blood_cx_traj); gc()
+rm(blood_cx, blood_cx_traj)
+gc()
 
-# clean up discharge category ==================================================
+
+# clean up =====================================================================
 
 df = fselect(df, -discharge_category, -discharge_category_clean)
+
+save_output(labs_trend_export, "lab_trends_by_trajectory", shareable = TRUE)
+
+rm(labs_trend_export)
+gc()
 
 message("04_outcomes.R complete.")
