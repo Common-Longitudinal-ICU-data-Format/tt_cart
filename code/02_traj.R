@@ -14,7 +14,6 @@ if (!exists("df") || !exists("temp") || !exists("save_output")) {
 
 message("Starting 02_traj.R")
 
-
 # prepare hourly temperature data ==============================================
 
 ## filter to 0-72h post-infusion -----------------------------------------------
