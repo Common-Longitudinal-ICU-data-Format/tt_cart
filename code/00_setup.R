@@ -172,8 +172,8 @@ today      = format(Sys.Date(), "%y%m%d")
 ## standardized save function --------------------------------------------------
 
 save_output = function(obj, name, shareable = FALSE, format = "csv") {
- 
- folder = if (shareable) "upload_to_box" else "intermediate_output"
+  
+  folder = if (shareable) "upload_to_box" else "intermediate_output"
   path = file.path(
     project_location, 
     folder, 
@@ -386,7 +386,8 @@ req_vitals = c(
 
 req_labs = c(
   "crp", "wbc", "creatinine", "platelet_count",
-  "lymphocytes_absolute", "ldh", "ferritin"
+  "lymphocytes_absolute", "ldh", "ferritin",
+  "hemoglobin", "neutrophils_absolute"
 )
 
 validation_specs = list(
