@@ -36,6 +36,8 @@ message("\n", paste(rep("-", 40), collapse = ""), "\n")
 
 source("06_export.R")
 
+source("07_analysis_traj.R")
+
 # report completion
 end_time = Sys.time()
 elapsed  = round(difftime(end_time, start_time, units = "mins"), 2)
