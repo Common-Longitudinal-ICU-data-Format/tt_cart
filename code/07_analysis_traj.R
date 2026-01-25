@@ -390,4 +390,45 @@ if (analysis_mode == "single") {
 }
 
 
+# ==============================================================================
+# RMST PSEUDO-REGRESSION (TRAJECTORY → SURVIVAL)
+# ==============================================================================
+
+cat("\n=== RMST Pseudo-Regression: Trajectory → 365-day Survival ===\n")
+
+if ("pseudo_rmst_365" %in% names(df)) {
+  
+  # model: trajectory → RMST, adjusted
+  rmst_model = tryCatch({
+    lm(pseudo_rmst_365 ~ trajectory_f + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f,
+       data = df)
+  }, error = function(e) NULL)
+  
+  if (!is.null(rmst_model)) {
+    
+    cat("\nAdjusted RMST differences (days) vs NT reference:\n")
+    rmst_results = broom::tidy(rmst_model, conf.int = TRUE)
+    
+    # print trajectory effects
+    traj_rows = rmst_results[grepl("trajectory", rmst_results$term), ]
+    print(traj_rows[, c("term", "estimate", "conf.low", "conf.high", "p.value")])
+    
+    # export coefficients for meta-analysis
+    rmst_coefs = rmst_results |>
+      as.data.table() |>
+      fmutate(
+        model = "rmst365_trajectory",
+        site  = site_lowercase,
+        n     = nobs(rmst_model)
+      )
+    
+    save_output(rmst_coefs, "rmst_coefs_trajectory", shareable = TRUE, subfolder = "trajectory")
+    cat("\nCoefficients exported for meta-analysis.\n")
+  }
+  
+} else {
+  cat("pseudo_rmst_365 not found - run 06_export.R with 'pseudo' package installed.\n")
+}
+
+
 message("\n07_analysis_traj.R complete.")
