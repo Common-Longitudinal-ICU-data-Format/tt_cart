@@ -451,6 +451,12 @@ micro_cult_list =
                    "fluid_category", 
                    "organism_category"))
 
+dx_list = 
+  list(
+    table_name = "hospital_diagnosis",
+    req_vars   = "hospitalization_id"
+  )
+  
 validation_specs = list(
   patient_list, 
   hosp_list, 
@@ -460,7 +466,8 @@ validation_specs = list(
   resp_list, 
   vitals_list, 
   micro_cult_list,
-  labs_list
+  labs_list,
+  dx_list
 )
 
 ## run validation functions
@@ -468,7 +475,7 @@ validation_specs = list(
 validate_all_tables(data_list, validation_specs)
 
 rm(labs_list, vitals_list, resp_list, med_cont_list, med_int_list, micro_cult_list, 
-   adt_list, hosp_list, patient_list, validation_specs)
+   adt_list, hosp_list, patient_list, validation_specs, dx_list)
 rm(clif_table_basenames, clif_table_filenames, required_filenames, required_tables, 
    table_file_map)
 gc()
