@@ -140,24 +140,25 @@ lab_categories = c(
 message("Loading lab data...")
 
 labs_raw = 
- data_list$labs |>
-  dplyr::filter(lab_category %in% lab_categories) |>
-  dplyr::filter(hospitalization_id %in% 
-    (fsubset(hid_jid_crosswalk, patient_id %in% df$patient_id) |> pull(hospitalization_id))
-  ) |>
+  data_list$labs |>
+  dplyr::filter(tolower(lab_category) %in% lab_categories) |>
+  dplyr::filter(lab_result_dttm >= start_date) |>
+  dplyr::filter(!is.na(lab_value_numeric)) |>
   dplyr::select(hospitalization_id, lab_result_dttm, lab_category, lab_value_numeric) |>
-  dplyr::collect()
+  dplyr::collect() |>
+  distinct()
 
 labs_raw = 
   join(labs_raw, hid_jid_crosswalk, how = "inner", multiple = TRUE) |>
-  fselect(patient_id, lab_dttm = lab_result_dttm, lab_category, lab_value = lab_value_numeric) |>
-  funique()
+  fselect(-hospitalization_id, -joined_hosp_id) |>
+  distinct()
 
 labs_raw = 
   join(labs_raw, anchor_df, how = "inner", multiple = TRUE) |>
   fmutate(
-    d_since_cart = as.integer(floor(as.numeric(difftime(lab_dttm, cart_t0, units = "days"))))
-  )
+    d_since_cart = as.integer(floor(as.numeric(difftime(lab_result_dttm, cart_t0, units = "days"))))
+  ) |>
+  frename(lab_dttm = lab_result_dttm, lab_value = lab_value_numeric)
 
 
 ## baseline labs (day -1 to day 0, closest to infusion) ------------------------
