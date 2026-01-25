@@ -290,7 +290,8 @@ model_vars = c(
   "cart_hour_precise", "cart_hour_floor"
 )
 
-model_data = fselect(df, any_of(model_vars))
+model_vars_present = intersect(model_vars, names(df))
+model_data = fselect(df, model_vars_present)
 save_output(model_data, "model_data", shareable = FALSE)
 
 
