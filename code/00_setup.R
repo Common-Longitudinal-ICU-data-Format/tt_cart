@@ -171,9 +171,10 @@ required_tables =
     "adt", 
     "vitals", 
     "labs", 
-    "medication_admin_continuous", 
+    "hospital_diagnosis",
     "respiratory_support", 
     "microbiology_culture",
+    "medication_admin_continuous", 
     "medication_admin_intermittent"
   )
 
