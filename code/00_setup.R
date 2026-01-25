@@ -1,5 +1,9 @@
-# setup and validation
-# install and load packages
+# ==============================================================================
+# 00_setup.R
+# Setup, validation, and helper functions for CAR-T temperature trajectory project
+# ==============================================================================
+
+# install and load packages ====================================================
 
 packages_to_install =
   c(
@@ -16,7 +20,8 @@ packages_to_install =
     "yaml",         
     "here",         
     "fst",          
-    "ps"
+    "ps",
+    "comorbidity"
   )
 
 packages_to_load = 
@@ -32,7 +37,7 @@ packages_to_load =
     "ps"
   )
 
-fn_install_if_mi = function(p) {
+fn_install_if_missing = function(p) {
   if (!requireNamespace(p, quietly = TRUE)) {              
     try(install.packages(p, dependencies = TRUE), silent = TRUE)  
   }
@@ -44,17 +49,16 @@ fn_load_quiet = function(p) {
   )
 }
 
-invisible(lapply(packages_to_install, fn_install_if_mi))
-
+invisible(lapply(packages_to_install, fn_install_if_missing))
 invisible(lapply(packages_to_load, fn_load_quiet))
 
 options(dplyr.summarise.inform = FALSE) 
 
-rm(packages_to_install, packages_to_load, fn_install_if_mi, fn_load_quiet)  
+rm(packages_to_install, packages_to_load, fn_install_if_missing, fn_load_quiet)  
 gc()                          
 
 
-# threads and ram
+# threads and ram ==============================================================
 
 os_type   = Sys.info()[["sysname"]]
 all_cores = parallel::detectCores(logical = TRUE)
@@ -87,7 +91,7 @@ get_ram_gb = function() {
 
 avail_ram_gb = get_ram_gb()
 
-## choose threads conservatively
+## choose threads conservatively -----------------------------------------------
 
 reserve_cores   = 1L
 gb_per_thread   = 0.50
@@ -96,7 +100,7 @@ max_by_memory   = if (is.finite(avail_ram_gb)) max(1L, floor(avail_ram_gb / gb_p
 n_threads       = as.integer(max(1L, min(max_by_cores, max_by_memory, 8L)))
 n_math_threads  = as.integer(max(1L, min(n_threads, 8L)))
 
-## apply thread settings
+## apply thread settings -------------------------------------------------------
 
 data.table::setDTthreads(threads = n_threads)
 collapse::set_collapse(nthreads  = n_threads)
@@ -111,15 +115,14 @@ message(
 )
 
 
-# site details
+# site details =================================================================
 
 project_root = find_root(rprojroot::has_dir("config"))
-
-config = yaml::read_yaml(file.path(project_root, "config", "config.yaml"))
+config       = yaml::read_yaml(file.path(project_root, "config", "config.yaml"))
 
 allowed_files = c("parquet", "csv", "fst")
 
-## user enters site details
+## user enters site details ----------------------------------------------------
 
 site_lowercase   = tolower(config$site_lowercase)
 tz_local         = config$time_zone
@@ -127,7 +130,7 @@ file_type        = tolower(config$file_type)
 tables_location  = config$tables_location
 project_location = config$project_location
 
-## file_type must be one of c(parquet, csv, fst)
+## file_type must be one of c(parquet, csv, fst) -------------------------------
 
 if (!(file_type %in% allowed_files)) {
   stop(
@@ -139,30 +142,71 @@ if (!(file_type %in% allowed_files)) {
   )
 }
 
-## file locations
+## create output directories ---------------------------------------------------
 
-subdirs = c(
+output_dirs = c(
   "intermediate_output",
-  "final_output"
+  "final_output",
+  "upload_to_box",
+  "proj_tables"
 )
 
-walk(subdirs, ~ {
+walk(output_dirs, ~ {
   p = file.path(project_location, .x)
   if (!dir.exists(p)) dir.create(p, recursive = TRUE)
 })
 
-rm(subdirs)
+rm(output_dirs)
 
-## dates
+## dates -----------------------------------------------------------------------
 
 start_date = ymd_hms("2018-01-01 00:00:00", tz = tz_local) 
 end_date   = ymd_hms("2024-12-31 23:59:59", tz = tz_local)
-start_date = with_tz(start_date,            tz = "UTC") 
-end_date   = with_tz(end_date,              tz = "UTC")
+start_date = with_tz(start_date, tz = "UTC") 
+end_date   = with_tz(end_date,   tz = "UTC")
 today      = format(Sys.Date(), "%y%m%d")
 
 
-# clif tables needed for project
+# helper functions =============================================================
+
+## standardized save function --------------------------------------------------
+
+save_output = function(obj, name, shareable = FALSE, format = "csv") {
+ 
+ folder = if (shareable) "upload_to_box" else "intermediate_output"
+  path = file.path(
+    project_location, 
+    folder, 
+    paste0(name, "_", site_lowercase, "_", today, ".", format)
+  )
+  
+  if (format == "csv") {
+    fwrite(obj, path)
+  } else if (format == "fst") {
+    fst::write_fst(obj, path)
+  } else if (format == "parquet") {
+    arrow::write_parquet(obj, path)
+  } else {
+    stop("Unsupported format: ", format)
+  }
+  
+  message("Saved: ", path)
+  invisible(path)
+}
+
+## safe division and log -------------------------------------------------------
+
+safe_div  = function(num, den) fifelse(!is.na(num) & !is.na(den) & den > 0, num / den, NA_real_)
+safe_log2 = function(x) fifelse(!is.na(x) & x > 0, log2(x), NA_real_)
+
+## standardize for trajectory fitting ------------------------------------------
+
+standardize = function(x) {
+  (x - fmean(x, na.rm = TRUE)) / fsd(x, na.rm = TRUE)
+}
+
+
+# clif tables needed for project ===============================================
 
 required_tables = 
   c(
@@ -178,7 +222,7 @@ required_tables =
     "medication_admin_intermittent"
   )
 
-## check required tables against available tables
+## check required tables against available tables ------------------------------
 
 clif_table_filenames = 
   list.files(
@@ -207,7 +251,7 @@ rm(allowed_files, missing_tables)
 gc()
 
 
-# load tables
+# load tables ==================================================================
 
 if (file_type == "parquet") {
   data_list = lapply(required_filenames, arrow::open_dataset)
@@ -225,8 +269,7 @@ if (file_type == "parquet") {
 names(data_list) = names(required_filenames)
 
 
-# validate table contents
-## function to validate a table
+# validate table contents ======================================================
 
 validate_table = function(tbl, table_name, req_vars = NULL, req_values = list()) {
   
@@ -245,7 +288,6 @@ validate_table = function(tbl, table_name, req_vars = NULL, req_values = list())
       next
     }
     
-    ### special handling for FileSystemDataset
     if (inherits(tbl, "FileSystemDataset")) {
       present_vals = character(0)
       tryCatch({
@@ -305,8 +347,6 @@ validate_table = function(tbl, table_name, req_vars = NULL, req_values = list())
   invisible(NULL)
 }
 
-## function to validate all tables
-
 validate_all_tables = function(data_list, validation_specs) {
   all_problems = character()
   
@@ -334,148 +374,82 @@ validate_all_tables = function(data_list, validation_specs) {
     stop("Validation errors found:\n", paste(all_problems, collapse = "\n\n"), call. = FALSE)
   }
   
-  message("✅ Validation passed: all required tables are present and contain needed values.")
+  message("Validation passed: all required tables present with needed values.")
 }
 
-## list the details of each table's required elements
-### prep vitals and labs separately, as they're used more than once
+## validation specs ------------------------------------------------------------
 
-req_vitals = 
-  c(
-    "heart_rate", 
-    "respiratory_rate", 
-    "map", 
-    "spo2", 
-    "temp_c",
-    "height_cm",
-    "weight_kg"
-  )
+req_vitals = c(
+  "heart_rate", "respiratory_rate", "map", "spo2", "temp_c",
+  "height_cm", "weight_kg"
+)
 
-req_labs = 
-  c(
-    "crp",
-    "wbc",
-    "creatinine",
-    "platelet_count",
-    "lymphocytes_absolute",
-    "ldh",
-    "ferritin"
-  )
+req_labs = c(
+  "crp", "wbc", "creatinine", "platelet_count",
+  "lymphocytes_absolute", "ldh", "ferritin"
+)
 
-### make lists of other tables' validation requirements
-
-patient_list = 
+validation_specs = list(
   list(
     table_name = "patient",
-    req_vars   = c("patient_id", 
-                   "race_category", 
-                   "ethnicity_category", 
-                   "sex_category", 
-                   "death_dttm"))
-
-hosp_list = 
+    req_vars   = c("patient_id", "race_category", "ethnicity_category", 
+                   "sex_category", "death_dttm")
+  ),
   list(
     table_name = "hospitalization",
-    req_vars   = c(
-      "patient_id", 
-      "hospitalization_id", 
-      "age_at_admission", 
-      "admission_dttm", 
-      "discharge_dttm"))
-
-adt_list = 
+    req_vars   = c("patient_id", "hospitalization_id", "age_at_admission", 
+                   "admission_dttm", "discharge_dttm")
+  ),
   list(
     table_name = "adt",
-    req_vars   = c("hospitalization_id", 
-                   "location_category", 
-                   "in_dttm", 
-                   "out_dttm"),
-    req_values = list(location_category = c("icu", "ward")))
-
-med_cont_list = 
+    req_vars   = c("hospitalization_id", "location_category", "in_dttm", "out_dttm"),
+    req_values = list(location_category = c("icu", "ward"))
+  ),
   list(
     table_name = "medication_admin_continuous",
-    req_vars   = c("hospitalization_id", 
-                   "med_group", 
-                   "med_category"),
+    req_vars   = c("hospitalization_id", "med_group", "med_category"),
     req_values = list(
       med_group    = c("vasoactives"),
-      med_category = c("norepinephrine", 
-                       "vasopressin", 
-                       "epinephrine", 
-                       "phenylephrine")))
-
-med_int_list = 
+      med_category = c("norepinephrine", "vasopressin", "epinephrine", "phenylephrine")
+    )
+  ),
   list(
     table_name = "medication_admin_intermittent",
-    req_vars   = c("hospitalization_id", 
-                   "med_group"),
-    req_values = list(
-      med_group = c("steroid", 
-                    "analgesia", 
-                    "car_t")))
-
-resp_list = 
+    req_vars   = c("hospitalization_id", "med_group"),
+    req_values = list(med_group = c("steroid", "analgesia", "car_t"))
+  ),
   list(
     table_name = "respiratory_support",
-    req_vars   = c("hospitalization_id", 
-                   "device_category", 
-                   "recorded_dttm"),
-    req_values = list(device_category = c("IMV", 
-                                          "NIPPV", 
-                                          "High Flow NC")))
-
-vitals_list = 
+    req_vars   = c("hospitalization_id", "device_category", "recorded_dttm"),
+    req_values = list(device_category = c("IMV", "NIPPV", "High Flow NC"))
+  ),
   list(
     table_name = "vitals",
-    req_vars   = c("hospitalization_id", 
-                   "vital_category", 
-                   "vital_value", 
-                   "recorded_dttm"),
-    req_values = list(vital_category = req_vitals))
-
-labs_list = 
+    req_vars   = c("hospitalization_id", "vital_category", "vital_value", "recorded_dttm"),
+    req_values = list(vital_category = req_vitals)
+  ),
   list(
     table_name = "labs",
-    req_vars   = c("hospitalization_id", 
-                   "lab_category", 
-                   "lab_value", 
-                   "lab_result_dttm"),
-    req_values = list(lab_category = req_labs))
-
-micro_cult_list = 
+    req_vars   = c("hospitalization_id", "lab_category", "lab_value", "lab_result_dttm"),
+    req_values = list(lab_category = req_labs)
+  ),
   list(
     table_name = "microbiology_culture",
-    req_vars   = c("hospitalization_id", 
-                   "result_dttm", 
-                   "fluid_category", 
-                   "organism_category"))
-
-dx_list = 
+    req_vars   = c("hospitalization_id", "result_dttm", "fluid_category", "organism_category")
+  ),
   list(
     table_name = "hospital_diagnosis",
     req_vars   = "hospitalization_id"
   )
-  
-validation_specs = list(
-  patient_list, 
-  hosp_list, 
-  adt_list, 
-  med_cont_list,
-  med_int_list,
-  resp_list, 
-  vitals_list, 
-  micro_cult_list,
-  labs_list,
-  dx_list
 )
 
-## run validation functions
+## run validation --------------------------------------------------------------
 
 validate_all_tables(data_list, validation_specs)
 
-rm(labs_list, vitals_list, resp_list, med_cont_list, med_int_list, micro_cult_list, 
-   adt_list, hosp_list, patient_list, validation_specs, dx_list)
+rm(validation_specs, req_vitals, req_labs)
 rm(clif_table_basenames, clif_table_filenames, required_filenames, required_tables, 
-   table_file_map)
+   table_file_map, validate_table, validate_all_tables)
 gc()
+
+message("00_setup.R complete.")
