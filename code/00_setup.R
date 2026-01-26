@@ -124,11 +124,22 @@ allowed_files = c("parquet", "csv", "fst")
 
 ## user enters site details ----------------------------------------------------
 
-site_lowercase   = tolower(config$site_lowercase)
-tz_local         = config$time_zone
-file_type        = tolower(config$file_type)  
+# support both 'site_lowercase' and 'institution' in config
+site_raw = config$site_lowercase %||% config$institution %||% ""
+site_lowercase = if (is.null(site_raw) || site_raw == "") "site" else tolower(site_raw)
+
+tz_local       = config$time_zone %||% "America/Chicago"
+file_type      = tolower(config$file_type %||% "parquet")
 tables_location  = config$tables_location
+
+# if project_location blank or missing, use project_root
 project_location = config$project_location
+if (is.null(project_location) || project_location == "") {
+  project_location = project_root
+}
+
+message("Site: ", site_lowercase)
+message("Project location: ", project_location)
 
 ## file_type must be one of c(parquet, csv, fst) -------------------------------
 
