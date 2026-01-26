@@ -508,6 +508,103 @@ if (nrow(cutpoint_coefs) > 0) {
 }
 
 # ==============================================================================
+# SENSITIVITY: HFR COLLAPSED INTO NT (FOR MEDIATION)
+# ==============================================================================
+
+message("\n== Sensitivity: HFR collapsed into NT (mediation) ==")
+
+n_hfr = fsum(df$trajectory == "HFR", na.rm = TRUE)
+message("  HFR patients: ", n_hfr)
+
+# collapse HFR into NT
+df$trajectory_collapsed = fifelse(df$trajectory == "HFR", "NT", df$trajectory)
+df$trajectory_collapsed_f = factor(df$trajectory_collapsed, levels = c("NT", "HT", "HSR"))
+
+## logistic mediation with collapsed trajectory --------------------------------
+
+mediation_collapsed_logistic = lapply(mediation_outcomes, \(o) {
+  
+  if (!o$var %in% names(df)) return(NULL)
+  
+  # total effect (no trajectory) - same as before
+  formula_total = as.formula(paste(
+    o$var, "~ cart_hour_precise + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f"
+  ))
+  
+  # direct effect with COLLAPSED trajectory
+  formula_direct = as.formula(paste(
+    o$var, "~ cart_hour_precise + trajectory_collapsed_f + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f"
+  ))
+  
+  model_total = tryCatch(glm(formula_total, data = df, family = binomial), error = function(e) NULL)
+  model_direct = tryCatch(glm(formula_direct, data = df, family = binomial), error = function(e) NULL)
+  
+  if (is.null(model_total) || is.null(model_direct)) return(NULL)
+  
+  total_coefs = tidy(model_total, exponentiate = TRUE, conf.int = TRUE) |>
+    as.data.table() |>
+    fmutate(outcome = o$name, site = site_lowercase, n = nobs(model_total), effect = "total", variant = "hfr_collapsed")
+  
+  direct_coefs = tidy(model_direct, exponentiate = TRUE, conf.int = TRUE) |>
+    as.data.table() |>
+    fmutate(
+      term = gsub("trajectory_collapsed_f", "trajectory_f", term),
+      outcome = o$name, 
+      site = site_lowercase, 
+      n = nobs(model_direct), 
+      effect = "direct",
+      variant = "hfr_collapsed"
+    )
+  
+  rbind(total_coefs, direct_coefs)
+})
+
+mediation_collapsed_coefs = rbindlist(mediation_collapsed_logistic, fill = TRUE)
+write_artifact(mediation_collapsed_coefs, "sensitivity", "logistic_coefs", site_lowercase, variant = "hfr_collapsed")
+
+## RMST mediation with collapsed trajectory ------------------------------------
+
+if ("pseudo_rmst_365" %in% names(df)) {
+  
+  rmst_total = tryCatch({
+    lm(pseudo_rmst_365 ~ cart_hour_precise + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f,
+       data = df)
+  }, error = function(e) NULL)
+  
+  rmst_direct_collapsed = tryCatch({
+    lm(pseudo_rmst_365 ~ cart_hour_precise + trajectory_collapsed_f + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f,
+       data = df)
+  }, error = function(e) NULL)
+  
+  if (!is.null(rmst_total) && !is.null(rmst_direct_collapsed)) {
+    
+    total_coefs = tidy(rmst_total, conf.int = TRUE) |>
+      as.data.table() |>
+      fmutate(outcome = "rmst_365", site = site_lowercase, n = nobs(rmst_total), effect = "total", variant = "hfr_collapsed")
+    
+    direct_coefs = tidy(rmst_direct_collapsed, conf.int = TRUE) |>
+      as.data.table() |>
+      fmutate(
+        term = gsub("trajectory_collapsed_f", "trajectory_f", term),
+        outcome = "rmst_365",
+        site = site_lowercase,
+        n = nobs(rmst_direct_collapsed),
+        effect = "direct",
+        variant = "hfr_collapsed"
+      )
+    
+    rmst_collapsed_coefs = rbind(total_coefs, direct_coefs)
+    write_artifact(rmst_collapsed_coefs, "sensitivity", "rmst_coefs", site_lowercase, variant = "hfr_collapsed")
+    
+    # print mediation summary
+    total_est = total_coefs[term == "cart_hour_precise", estimate]
+    direct_est = direct_coefs[term == "cart_hour_precise", estimate]
+    pct_med = 100 * (total_est - direct_est) / total_est
+    message("  RMST mediation (HFR collapsed): ", round(pct_med, 1), "% of effect explained")
+  }
+}
+
+# ==============================================================================
 # PRINT SUMMARY
 # ==============================================================================
 
