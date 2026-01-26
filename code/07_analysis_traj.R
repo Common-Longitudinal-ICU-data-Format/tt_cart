@@ -111,8 +111,9 @@ diag_by_traj =
     n_anakinra  = fsum(anakinra_any_30d, na.rm = TRUE),
     rate_dead_90 = fmean(dead_90_01, na.rm = TRUE)
   ) |>
-  fungroup() |>
-  fmutate(site = site_lowercase)
+  fungroup()
+
+diag_by_traj$site = site_lowercase
 
 write_artifact(diag_by_traj, "diagnostics", "by_trajectory", site_lowercase)
 
@@ -131,7 +132,7 @@ t1_continuous =
   lapply(t1_cont_vars, \(v) {
     if (!v %in% names(df)) return(NULL)
     x = df[[v]]
-    fselect(df, trajectory) |>
+    out = fselect(df, trajectory) |>
       fmutate(x = x, x_sq = x^2) |>
       fgroup_by(trajectory) |>
       fsummarize(
@@ -140,8 +141,10 @@ t1_continuous =
         sum_x  = fsum(x, na.rm = TRUE),
         sum_x_sq = fsum(x_sq, na.rm = TRUE)
       ) |>
-      fungroup() |>
-      fmutate(variable = v, site = site_lowercase)
+      fungroup()
+    out$variable = v
+    out$site = site_lowercase
+    out
   }) |>
   rbindlist()
 
@@ -156,11 +159,13 @@ t1_categorical =
   lapply(t1_cat_vars, \(v) {
     if (!v %in% names(df)) return(NULL)
     tmp = tidytable(trajectory = df$trajectory, cat_val = as.character(df[[v]]))
-    fgroup_by(tmp, trajectory, cat_val) |>
+    out = fgroup_by(tmp, trajectory, cat_val) |>
       fsummarize(n = fnobs(trajectory)) |>
-      fungroup() |>
-      fmutate(variable = v, site = site_lowercase) |>
-      frename(category = cat_val)
+      fungroup()
+    out$variable = v
+    out$site = site_lowercase
+    setnames(out, "cat_val", "category")
+    out
   }) |>
   rbindlist()
 
@@ -183,12 +188,14 @@ t2_binary =
   lapply(t2_binary_vars, \(v) {
     if (!v %in% names(df)) return(NULL)
     x = df[[v]]
-    fselect(df, trajectory) |>
+    out = fselect(df, trajectory) |>
       fmutate(x = x) |>
       fgroup_by(trajectory) |>
       fsummarize(n = fnobs(x), n_events = fsum(x, na.rm = TRUE)) |>
-      fungroup() |>
-      fmutate(variable = v, site = site_lowercase)
+      fungroup()
+    out$variable = v
+    out$site = site_lowercase
+    out
   }) |>
   rbindlist()
 
@@ -202,7 +209,7 @@ t2_time =
   lapply(t2_time_vars, \(v) {
     if (!v %in% names(df)) return(NULL)
     x = df[[v]]
-    fselect(df, trajectory) |>
+    out = fselect(df, trajectory) |>
       fmutate(x = x, x_sq = x^2) |>
       fgroup_by(trajectory) |>
       fsummarize(
@@ -210,8 +217,10 @@ t2_time =
         sum_x    = fsum(x, na.rm = TRUE),
         sum_x_sq = fsum(x_sq, na.rm = TRUE)
       ) |>
-      fungroup() |>
-      fmutate(variable = v, site = site_lowercase)
+      fungroup()
+    out$variable = v
+    out$site = site_lowercase
+    out
   }) |>
   rbindlist()
 
@@ -228,14 +237,16 @@ time_points = seq(0, 365, by = 30)
 surv_q30d = 
   lapply(time_points, \(t) {
     prev_t = ifelse(t == 0, 0, t - 30)
-    fgroup_by(df, trajectory) |>
+    out = fgroup_by(df, trajectory) |>
       fsummarize(
         n_at_risk  = fsum(followup_d >= prev_t, na.rm = TRUE),
         n_events   = fsum(died == 1 & time_to_death > prev_t & time_to_death <= t, na.rm = TRUE),
         n_censored = fsum(died == 0 & followup_d > prev_t & followup_d <= t, na.rm = TRUE)
       ) |>
-      fungroup() |>
-      fmutate(time_point = t, site = site_lowercase)
+      fungroup()
+    out$time_point = t
+    out$site = site_lowercase
+    out
   }) |>
   rbindlist()
 
