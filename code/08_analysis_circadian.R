@@ -59,6 +59,24 @@ write_artifact = function(dt, analysis, artifact, site,
   invisible(path)
 }
 
+# safe tidy for glm - falls back to Wald CIs if profiling fails
+safe_tidy_glm = function(model, exponentiate = TRUE) {
+  tryCatch(
+    tidy(model, exponentiate = exponentiate, conf.int = TRUE),
+    error = function(e) {
+      out = tidy(model, exponentiate = exponentiate, conf.int = FALSE)
+      if (exponentiate) {
+        out$conf.low = exp(log(out$estimate) - 1.96 * out$std.error)
+        out$conf.high = exp(log(out$estimate) + 1.96 * out$std.error)
+      } else {
+        out$conf.low = out$estimate - 1.96 * out$std.error
+        out$conf.high = out$estimate + 1.96 * out$std.error
+      }
+      out
+    }
+  )
+}
+
 # prepare analysis data ========================================================
 
 message("\n== Preparing analysis data ==")
@@ -259,7 +277,7 @@ logistic_results = lapply(logistic_outcomes, \(o) {
   model = tryCatch(glm(formula, data = df, family = binomial), error = function(e) NULL)
   if (is.null(model)) return(NULL)
   
-  tidy(model, exponentiate = TRUE, conf.int = TRUE) |>
+  safe_tidy_glm(model) |>
     as.data.table() |>
     fmutate(outcome = o$name, site = site_lowercase, n = nobs(model), time_var = "clock")
 })
@@ -398,7 +416,7 @@ for (target in c("CD19", "BCMA")) {
     model = tryCatch(glm(formula, data = df_sub, family = binomial), error = function(e) NULL)
     if (is.null(model)) return(NULL)
     
-    tidy(model, exponentiate = TRUE, conf.int = TRUE) |>
+    safe_tidy_glm(model) |>
       as.data.table() |>
       fmutate(outcome = o$name, site = site_lowercase, n = nobs(model), subgroup = target)
   })
@@ -454,7 +472,7 @@ for (sex in c("male", "female")) {
     model = tryCatch(glm(formula, data = df_sub, family = binomial), error = function(e) NULL)
     if (is.null(model)) return(NULL)
     
-    tidy(model, exponentiate = TRUE, conf.int = TRUE) |>
+    safe_tidy_glm(model) |>
       as.data.table() |>
       fmutate(outcome = o$name, site = site_lowercase, n = nobs(model), subgroup = sex)
   })
@@ -506,7 +524,7 @@ cutpoint_results = lapply(cutpoints, \(cp) {
   
   if (is.null(model)) return(NULL)
   
-  coef_row = tidy(model, exponentiate = TRUE, conf.int = TRUE) |>
+  coef_row = safe_tidy_glm(model) |>
     as.data.table() |>
     fsubset(term == "early_cp")
   
