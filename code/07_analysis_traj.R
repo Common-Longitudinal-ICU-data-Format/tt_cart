@@ -416,6 +416,71 @@ if (n_reassigned > 0) {
 }
 
 # ==============================================================================
+# SENSITIVITY: HFR COLLAPSED INTO NT
+# ==============================================================================
+
+message("\n== Sensitivity: HFR collapsed into NT ==")
+
+n_hfr = fsum(df$trajectory == "HFR", na.rm = TRUE)
+message("  HFR patients: ", n_hfr)
+
+# collapse HFR into NT
+df$trajectory_collapsed = fifelse(df$trajectory == "HFR", "NT", df$trajectory)
+df$trajectory_collapsed_f = factor(df$trajectory_collapsed, levels = c("NT", "HT", "HSR"))
+
+message("  After collapse:")
+message("    NT (includes HFR): ", fsum(df$trajectory_collapsed == "NT", na.rm = TRUE))
+message("    HT: ", fsum(df$trajectory_collapsed == "HT", na.rm = TRUE))
+message("    HSR: ", fsum(df$trajectory_collapsed == "HSR", na.rm = TRUE))
+
+# logistic with collapsed trajectory
+sens_collapsed_logistic = lapply(logistic_outcomes, \(o) {
+  if (!o$var %in% names(df)) return(NULL)
+  
+  formula = as.formula(paste(
+    o$var, "~ trajectory_collapsed_f + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f"
+  ))
+  
+  model = tryCatch(glm(formula, data = df, family = binomial), error = function(e) NULL)
+  if (is.null(model)) return(NULL)
+  
+  tidy(model, exponentiate = TRUE, conf.int = TRUE) |>
+    as.data.table() |>
+    fmutate(
+      term = gsub("trajectory_collapsed_f", "trajectory_f", term),
+      outcome = o$name, 
+      site = site_lowercase, 
+      n = nobs(model),
+      variant = "hfr_collapsed"
+    )
+})
+
+sens_collapsed_coefs = rbindlist(sens_collapsed_logistic, fill = TRUE)
+write_artifact(sens_collapsed_coefs, "sensitivity", "logistic_coefs", site_lowercase, variant = "hfr_collapsed")
+
+# RMST with collapsed
+if ("pseudo_rmst_365" %in% names(df)) {
+  rmst_collapsed = tryCatch({
+    lm(pseudo_rmst_365 ~ trajectory_collapsed_f + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f,
+       data = df)
+  }, error = function(e) NULL)
+  
+  if (!is.null(rmst_collapsed)) {
+    rmst_collapsed_coefs = tidy(rmst_collapsed, conf.int = TRUE) |>
+      as.data.table() |>
+      fmutate(
+        term = gsub("trajectory_collapsed_f", "trajectory_f", term),
+        outcome = "rmst_365",
+        site = site_lowercase,
+        n = nobs(rmst_collapsed),
+        variant = "hfr_collapsed"
+      )
+    
+    write_artifact(rmst_collapsed_coefs, "sensitivity", "rmst_coefs", site_lowercase, variant = "hfr_collapsed")
+  }
+}
+
+# ==============================================================================
 # PRINT SUMMARY
 # ==============================================================================
 
