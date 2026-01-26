@@ -113,8 +113,9 @@ diag_by_hour =
     n_toci     = fsum(toci_any_30d, na.rm = TRUE),
     n_anakinra = fsum(anakinra_any_30d, na.rm = TRUE)
   ) |>
-  fungroup() |>
-  fmutate(site = site_lowercase)
+  fungroup()
+
+diag_by_hour$site = site_lowercase
 
 write_artifact(diag_by_hour, "diagnostics", "by_hour", site_lowercase)
 
@@ -132,7 +133,7 @@ t1_continuous =
   lapply(t1_cont_vars, \(v) {
     if (!v %in% names(df)) return(NULL)
     x = df[[v]]
-    fselect(df, early_late) |>
+    out = fselect(df, early_late) |>
       fmutate(x = x, x_sq = x^2) |>
       fgroup_by(early_late) |>
       fsummarize(
@@ -141,8 +142,10 @@ t1_continuous =
         sum_x    = fsum(x, na.rm = TRUE),
         sum_x_sq = fsum(x_sq, na.rm = TRUE)
       ) |>
-      fungroup() |>
-      fmutate(variable = v, site = site_lowercase)
+      fungroup()
+    out$variable = v
+    out$site = site_lowercase
+    out
   }) |>
   rbindlist()
 
@@ -156,11 +159,13 @@ t1_categorical =
   lapply(t1_cat_vars, \(v) {
     if (!v %in% names(df)) return(NULL)
     tmp = tidytable(early_late = df$early_late, cat_val = as.character(df[[v]]))
-    fgroup_by(tmp, early_late, cat_val) |>
+    out = fgroup_by(tmp, early_late, cat_val) |>
       fsummarize(n = fnobs(early_late)) |>
-      fungroup() |>
-      fmutate(variable = v, site = site_lowercase) |>
-      frename(category = cat_val)
+      fungroup()
+    out$variable = v
+    out$site = site_lowercase
+    setnames(out, "cat_val", "category")
+    out
   }) |>
   rbindlist()
 
@@ -180,12 +185,14 @@ t2_binary =
   lapply(t2_binary_vars, \(v) {
     if (!v %in% names(df)) return(NULL)
     x = df[[v]]
-    fselect(df, early_late) |>
+    out = fselect(df, early_late) |>
       fmutate(x = x) |>
       fgroup_by(early_late) |>
       fsummarize(n = fnobs(x), n_events = fsum(x, na.rm = TRUE)) |>
-      fungroup() |>
-      fmutate(variable = v, site = site_lowercase)
+      fungroup()
+    out$variable = v
+    out$site = site_lowercase
+    out
   }) |>
   rbindlist()
 
@@ -202,14 +209,16 @@ time_points = seq(0, 365, by = 30)
 surv_earlylate = 
   lapply(time_points, \(t) {
     prev_t = ifelse(t == 0, 0, t - 30)
-    fgroup_by(df, early_late) |>
+    out = fgroup_by(df, early_late) |>
       fsummarize(
         n_at_risk  = fsum(followup_d >= prev_t, na.rm = TRUE),
         n_events   = fsum(died == 1 & time_to_death > prev_t & time_to_death <= t, na.rm = TRUE),
         n_censored = fsum(died == 0 & followup_d > prev_t & followup_d <= t, na.rm = TRUE)
       ) |>
-      fungroup() |>
-      fmutate(time_point = t, site = site_lowercase)
+      fungroup()
+    out$time_point = t
+    out$site = site_lowercase
+    out
   }) |>
   rbindlist()
 
