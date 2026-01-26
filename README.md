@@ -16,35 +16,13 @@ Both analyses are designed for federated multi-site analysis. Each site runs the
 
 ## Quick Start
 
-### 1. Set up the R Project
+### 1. Clone the Repository and Open the R Project
 
-**Important**: This pipeline uses `rprojroot` to find the config file. You must:
-
-1. Create a new RStudio Project (File → New Project → New Directory)
-2. Create the following folder structure inside the project:
-
-```
-your_project_name/
-├── your_project_name.Rproj    # Created by RStudio
-├── config/
-│   └── config.yaml            # Your site configuration
-├── code/
-│   ├── 00_setup.R
-│   ├── 01_cohort.R
-│   ├── 02_traj.R
-│   ├── 03_covariates.R
-│   ├── 04_outcomes.R
-│   ├── 05_easix.R
-│   ├── 06_export.R
-│   ├── 07_analysis_traj.R
-│   └── 08_analysis_circadian.R
-├── intermediate_output/       # Created automatically
-└── upload_to_box/             # Created automatically
-    ├── trajectory/            # Trajectory paper outputs
-    └── circadian/             # Circadian paper outputs
+```bash
+git clone [repository-url]
 ```
 
-3. Open the `.Rproj` file in RStudio before running any scripts
+**Important**: Open the `.Rproj` file in RStudio before running any scripts. The pipeline uses `rprojroot` to locate the config file.
 
 ### 2. Configure `config/config.yaml`
 
