@@ -10,6 +10,12 @@ if (!exists("df") || !exists("save_output")) {
   stop("Run 00_setup.R through 06_export.R first.", call. = FALSE)
 }
 
+# ensure site_lowercase is set
+if (!exists("site_lowercase") || is.null(site_lowercase) || site_lowercase == "") {
+  site_lowercase = "site"
+  message("Warning: site_lowercase not set, using 'site' as default")
+}
+
 message("Starting 07_analysis_traj.R")
 
 # packages =====================================================================
