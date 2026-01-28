@@ -38,6 +38,7 @@ temp_hourly =
 temp_hourly = 
   group_by(temp_hourly, joined_hosp_id) |>
   complete(temp_time = seq.POSIXt(from = t0[1], to = t0[1] + dhours(72), by = "1 hour")) |>
+  mutate(temp_measured = !is.na(temp_c)) |>
   fill(everything(), .direction = "down") |>
   fill(everything(), .direction = "up") |>
   ungroup()
@@ -126,6 +127,7 @@ fig_data_by_traj =
   fgroup_by(temp_hourly, trajectory, hour) |>
   fsummarize(
     n_obs       = fnobs(temp_c),
+    n_measured  = sum(temp_measured),
     sum_temp    = fsum(temp_c, na.rm = TRUE),
     sum_temp_sq = fsum(temp_c^2, na.rm = TRUE)
   ) |>
@@ -140,6 +142,7 @@ fig_data_by_product =
   fgroup_by(temp_hourly, cart_group, hour) |>
   fsummarize(
     n_obs       = fnobs(temp_c),
+    n_measured  = sum(temp_measured),
     sum_temp    = fsum(temp_c, na.rm = TRUE),
     sum_temp_sq = fsum(temp_c^2, na.rm = TRUE)
   ) |>
