@@ -41,6 +41,14 @@ df$dead_365_01   = as.integer(!is.na(df$time_to_death) & df$time_to_death >= 0 &
 df$los_hospital_d = as.numeric(difftime(df$discharge_dttm, df$admission_dttm, units = "days"))
 
 
+# create crosswalk for 30 day hospitalizations ================================================
+all_hid_crosswalk = 
+  data_list$hospitalization |>
+  dplyr::filter(patient_id %in% cart_pids) |>
+  dplyr::filter(admission_dttm >= start_date) |>
+  dplyr::select(patient_id, hospitalization_id) |>
+  dplyr::collect()
+
 # ICU outcomes =================================================================
 
 ## ICU admission within 30 days ------------------------------------------------
@@ -53,11 +61,11 @@ icu_flag =
   dplyr::collect() 
 
 icu_flag = 
-  join(icu_flag, hid_jid_crosswalk, how = "inner") |>
+  join(icu_flag, all_hid_crosswalk, on = "hospitalization_id", how = "inner", multiple = TRUE) |>
   fselect(patient_id, icu_dttm = in_dttm)
 
 icu_flag = 
-  join(icu_flag, anchor_df, how = "inner", multiple = TRUE) |>
+  join(icu_flag, anchor_df, on = "patient_id", how = "inner", multiple = TRUE) |>  
   fsubset(icu_dttm >= cart_t0 & icu_dttm <= cart_t0 + ddays(30)) |>
   pull(patient_id) |>
   funique()
@@ -68,16 +76,16 @@ vaso_flag =
   data_list$medication_admin_continuous |>
   dplyr::filter(tolower(med_group) == "vasoactives") |> 
   dplyr::filter(admin_dttm >= start_date) |>
+  dplyr::distinct(hospitalization_id, admin_dttm) |>
   dplyr::select(hospitalization_id, admin_dttm) |>
   dplyr::collect() 
 
 vaso_flag = 
-  join(vaso_flag, hid_jid_crosswalk, how = "inner", multiple = TRUE) |>
-  fsubset(patient_id %in% df$patient_id) |>
+  join(vaso_flag, all_hid_crosswalk, on = "hospitalization_id", how = "inner", multiple = TRUE) |>
   fselect(patient_id, va_dttm = admin_dttm)
 
 vaso_flag = 
-  join(vaso_flag, anchor_df, how = "inner", multiple = TRUE) |>
+  join(vaso_flag, anchor_df, on = "patient_id", how = "inner", multiple = TRUE) |>
   fsubset(va_dttm >= cart_t0 & va_dttm <= cart_t0 + ddays(30)) |>
   pull(patient_id) |>
   funique()
@@ -88,25 +96,25 @@ resp_flag =
   data_list$respiratory_support |>
   dplyr::filter(tolower(device_category) %in% c("imv", "nippv", "high flow nc")) |>
   dplyr::filter(recorded_dttm >= start_date) |>
+  dplyr::distinct(hospitalization_id, recorded_dttm, device_category) |>
   dplyr::select(hospitalization_id, recorded_dttm, device_category) |>
   dplyr::collect()
 
 resp_flag = 
-  join(resp_flag, hid_jid_crosswalk, how = "inner", multiple = TRUE) |>
-  fsubset(patient_id %in% df$patient_id) |>
+  join(resp_flag, all_hid_crosswalk, on = "hospitalization_id", how = "inner", multiple = TRUE) |>
   fselect(patient_id, recorded_dttm, device_category)
 
-imv_flag = 
-  join(resp_flag, anchor_df, how = "inner", multiple = TRUE) |>
-  fsubset(recorded_dttm >= cart_t0 & recorded_dttm <= cart_t0 + ddays(30)) |>
-  fsubset(tolower(device_category) == "imv") |>
+resp_flag = 
+  join(resp_flag, anchor_df, on = "patient_id", how = "inner", multiple = TRUE) |>
+  fsubset(recorded_dttm >= cart_t0 & recorded_dttm <= cart_t0 + ddays(30))
+
+imv_flag =
+  fsubset(resp_flag, tolower(device_category) == "imv") |>
   pull(patient_id) |>
   funique()
 
-resp_flag = 
-  join(resp_flag, anchor_df, how = "inner", multiple = TRUE) |>
-  fsubset(recorded_dttm >= cart_t0 & recorded_dttm <= cart_t0 + ddays(30)) |>
-  pull(patient_id) |>
+resp_flag =
+  pull(resp_flag, patient_id) |>
   funique()
 
 ## add ICU flags to df ---------------------------------------------------------
