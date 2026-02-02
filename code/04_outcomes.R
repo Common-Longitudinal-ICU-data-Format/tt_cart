@@ -29,14 +29,14 @@ df$discharge_category_clean = case_when(
 
 df$dc_dead_01    = fifelse(df$discharge_category_clean == "expired", 1L, 0L)
 df$dc_hospice_01 = fifelse(df$discharge_category_clean == "hospice", 1L, 0L)
-df$time_to_death = as.numeric(difftime(df$death_dttm, df$admin_dttm, units = "days"))
-df$dead_30_01    = as.integer(!is.na(df$time_to_death) & df$time_to_death <= 30)
-df$dead_90_01    = as.integer(!is.na(df$time_to_death) & df$time_to_death <= 90)
-df$dead_180_01   = as.integer(!is.na(df$time_to_death) & df$time_to_death <= 180)
-df$dead_365_01   = as.integer(!is.na(df$time_to_death) & df$time_to_death <= 365)
+df$time_to_death = as.numeric(difftime(df$death_dttm, df$cart_t0, units = "days"))
+df$dead_30_01    = as.integer(!is.na(df$time_to_death) & df$time_to_death >= 0 & df$time_to_death <= 30)
+df$dead_90_01    = as.integer(!is.na(df$time_to_death) & df$time_to_death >= 0 & df$time_to_death <= 90)
+df$dead_180_01   = as.integer(!is.na(df$time_to_death) & df$time_to_death >= 0 & df$time_to_death <= 180)
+df$dead_365_01   = as.integer(!is.na(df$time_to_death) & df$time_to_death >= 0 & df$time_to_death <= 365)
 
 
-# length of stay ===============================================================
+# index hospital length of stay ===============================================================
 
 df$los_hospital_d = as.numeric(difftime(df$discharge_dttm, df$admission_dttm, units = "days"))
 
