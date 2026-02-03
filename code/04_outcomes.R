@@ -140,12 +140,11 @@ gc()
 
 lab_categories = c(
   "ldh", "crp", "ferritin", "wbc", "lymphocytes_absolute",
-  "hemoglobin", "platelet_count", "neutrophils_absolute"
+  "hemoglobin", "platelet_count", "neutrophils_absolute", "creatinine", 
+  "alt", "ast", "bilirubin_total"
 )
 
 ## load all relevant labs ------------------------------------------------------
-
-message("Loading lab data...")
 
 labs_raw = 
   data_list$labs |>
@@ -157,12 +156,12 @@ labs_raw =
   distinct()
 
 labs_raw = 
-  join(labs_raw, hid_jid_crosswalk, how = "inner", multiple = TRUE) |>
-  fselect(-hospitalization_id, -joined_hosp_id) |>
+  join(labs_raw, all_hid_crosswalk, on = "hospitalization_id", how = "inner", multiple = TRUE) |>
+  fselect(patient_id, lab_result_dttm, lab_category, lab_value_numeric) |>
   distinct()
 
 labs_raw = 
-  join(labs_raw, anchor_df, how = "inner", multiple = TRUE) |>
+  join(labs_raw, anchor_df, on = "patient_id", how = "inner", multiple = TRUE) |>
   fmutate(
     d_since_cart = as.integer(floor(as.numeric(difftime(lab_result_dttm, cart_t0, units = "days"))))
   ) |>
@@ -171,12 +170,10 @@ labs_raw =
 
 ## baseline labs (day -1 to day 0, closest to infusion) ------------------------
 
-message("Calculating baseline labs...")
-
 baseline_labs = 
-  fsubset(labs_raw, d_since_cart >= -1 & d_since_cart <= 0) |>
-  fmutate(time_to_cart = abs(as.numeric(difftime(lab_dttm, cart_t0, units = "hours")))) |>
-  roworder(patient_id, lab_category, time_to_cart) |>
+  fsubset(labs_raw, lab_dttm >= cart_t0 - dhours(24) & lab_dttm <= cart_t0) |>
+  fmutate(hours_before_cart = as.numeric(difftime(cart_t0, lab_dttm, units = "hours"))) |>
+  roworder(patient_id, lab_category, hours_before_cart) |>
   fgroup_by(patient_id, lab_category) |>
   ffirst() |>
   fselect(patient_id, lab_category, lab_value) |>
@@ -194,57 +191,78 @@ gc()
 
 ## hematotoxicity (ICAHT) - nadirs in day 0-30 ---------------------------------
 
-message("Calculating hematotoxicity nadirs...")
+# Get ANC daily nadirs and fill gaps (assume state persists between measurements)
+anc_daily = 
+  fsubset(daily_nadirs, lab_category == "neutrophils_absolute") |>
+  fselect(patient_id, d_since_cart, anc = nadir_value) |>
+  roworder(patient_id, d_since_cart)
 
-hematox_labs = fsubset(labs_raw, d_since_cart >= 0 & d_since_cart <= 30)
+# Fill gaps: for each patient, create complete day sequence 0-30 and fill forward
+anc_complete = 
+  anc_daily |>
+  as.data.table() |>
+  setorder(patient_id, d_since_cart)
 
-### ANC nadir
-anc_nadir = 
-  fsubset(hematox_labs, lab_category == "neutrophils_absolute") |>
-  fgroup_by(patient_id) |>
-  fsummarize(anc_nadir = fmin(lab_value, na.rm = TRUE)) |>
-  fungroup()
+# Create complete day grid for each patient
+anc_complete = 
+  anc_complete[, .(d_since_cart = 0:30), by = patient_id] |>
+  merge(anc_daily, by = c("patient_id", "d_since_cart"), all.x = TRUE) |>
+  setorder(patient_id, d_since_cart)
 
-### platelet nadir
-plt_nadir = 
-  fsubset(hematox_labs, lab_category == "platelet_count") |>
-  fgroup_by(patient_id) |>
-  fsummarize(plt_nadir = fmin(lab_value, na.rm = TRUE)) |>
-  fungroup()
+# Forward fill ANC values (LOCF - last observation carried forward)
+anc_complete[, anc_filled := nafill(anc, type = "locf"), by = patient_id]
 
-### hemoglobin nadir
-hgb_nadir = 
-  fsubset(hematox_labs, lab_category == "hemoglobin") |>
-  fgroup_by(patient_id) |>
-  fsummarize(hgb_nadir = fmin(lab_value, na.rm = TRUE)) |>
-  fungroup()
+# Calculate consecutive days with ANC <500 and <100
+# Function to find max consecutive days below threshold
+find_max_consecutive = function(values, threshold) {
+  below = values < threshold
+  if (!any(below, na.rm = TRUE)) return(0L)
+  
+# Create run-length encoding
+  rle_result = rle(below)
+  max_consecutive = max(rle_result$lengths[rle_result$values], na.rm = TRUE)
+  return(as.integer(max_consecutive))
+}
 
-### combine nadirs
-df = join(df, anc_nadir, how = "left", multiple = FALSE)
-df = join(df, plt_nadir, how = "left", multiple = FALSE)
-df = join(df, hgb_nadir, how = "left", multiple = FALSE)
+# Calculate for each patient
+icaht_calc = 
+  anc_complete[!is.na(anc_filled), .(
+    max_consec_lt500 = find_max_consecutive(anc_filled, 500),
+    max_consec_lt100 = find_max_consecutive(anc_filled, 100),
+    max_anc          = max(anc_filled, na.rm = TRUE),
+    min_anc          = min(anc_filled, na.rm = TRUE),
+    n_days_with_data = sum(!is.na(anc))
+  ), by = patient_id]
 
-### ICAHT severity (simplified - based on ANC and platelets)
-### Grade 1: ANC <1.0 or Plt <75
-### Grade 2: ANC <0.5 or Plt <50
-### Grade 3: ANC <0.2 or Plt <25
-### Grade 4: ANC <0.1 or Plt <10
+# Apply ICAHT grading criteria (Early: 0-30 days)
+# Grade 1: <500 for 1-6 consecutive days
+# Grade 2: <500 for 7-13 consecutive days
+# Grade 3: <500 for ≥14 consecutive days OR <100 for ≥7 consecutive days
+# Grade 4: Never above 500 OR <100 for ≥14 consecutive days
 
-df = df |>
+icaht_calc = 
+  icaht_calc |>
+  as_tidytable() |>
   fmutate(
-    # ANC in 10^9/L, platelets in 10^9/L (CLIF standard)
     icaht_grade = case_when(
-      anc_nadir < 0.1 | plt_nadir < 10   ~ 4L,
-      anc_nadir < 0.2 | plt_nadir < 25   ~ 3L,
-      anc_nadir < 0.5 | plt_nadir < 50   ~ 2L,
-      anc_nadir < 1.0 | plt_nadir < 75   ~ 1L,
-      TRUE                               ~ 0L
+      max_anc <= 500                                      ~ 4L,  # Never above 500
+      max_consec_lt100 >= 14                              ~ 4L,  # <100 for ≥14 consecutive days
+      max_consec_lt100 >= 7                               ~ 3L,  # <100 for ≥7 consecutive days
+      max_consec_lt500 >= 14                              ~ 3L,  # <500 for ≥14 consecutive days
+      max_consec_lt500 >= 7 & max_consec_lt500 < 14       ~ 2L,  # <500 for 7-13 consecutive days
+      max_consec_lt500 >= 1 & max_consec_lt500 < 7        ~ 1L,  # <500 for 1-6 consecutive days
+      TRUE                                                ~ 0L   # No significant neutropenia
     ),
     severe_icaht_01 = as.integer(icaht_grade >= 3)
-  )
+  ) |>
+  fselect(patient_id, icaht_grade, severe_icaht_01)
 
-rm(anc_nadir, plt_nadir, hgb_nadir, hematox_labs)
-gc()
+# Join to df
+df = join(df, icaht_calc, how = "left", multiple = FALSE)
+
+# Fill missing ICAHT grades with 0
+df$icaht_grade       = replace_na(df$icaht_grade, 0L)
+df$severe_icaht_01   = replace_na(df$severe_icaht_01, 0L)
 
 
 ## hyperferritinemia (HLH surrogate) -------------------------------------------
