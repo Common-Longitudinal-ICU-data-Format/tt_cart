@@ -167,8 +167,7 @@ labs_raw =
   ) |>
   frename(lab_dttm = lab_result_dttm, lab_value = lab_value_numeric)
 
-
-## baseline labs (day -1 to day 0, closest to infusion) ------------------------
+##Baseline labs (day -1 to day 0, closest to infusion) ------------------------
 
 baseline_labs = 
   fsubset(labs_raw, lab_dttm >= cart_t0 - dhours(24) & lab_dttm <= cart_t0) |>
@@ -188,6 +187,46 @@ df = join(df, baseline_labs, how = "left", multiple = FALSE)
 rm(baseline_labs)
 gc()
 
+##Nadir labs--------------------------------------------------------------------
+# Filter to hematology labs for days 0-30
+hematox_labs = 
+  fsubset(labs_raw, d_since_cart >= 0 & d_since_cart <= 30) |>
+  fsubset(lab_category %in% c("neutrophils_absolute", "hemoglobin", "lymphocytes_absolute", "platelet_count"))
+
+# Calculate daily nadirs (minimum value per patient per day per lab)
+daily_nadirs = 
+  fgroup_by(hematox_labs, patient_id, lab_category, d_since_cart) |>
+  fsummarize(nadir_value = fmin(lab_value, na.rm = TRUE)) |>
+  fungroup()
+
+# Also calculate overall nadirs (minimum across all 30 days)
+overall_nadirs = 
+  fgroup_by(hematox_labs, patient_id, lab_category) |>
+  fsummarize(nadir_value = fmin(lab_value, na.rm = TRUE)) |>
+  fungroup() |>
+  pivot_wider(
+    names_from   = lab_category,
+    values_from  = nadir_value)
+
+# Join overall nadirs to df
+df = join(df, overall_nadirs, how = "left", multiple = FALSE)
+
+# Rename for clarity
+if ("neutrophils_absolute" %in% names(df)) {
+  df = frename(df, anc_nadir = neutrophils_absolute)
+}
+if ("platelet_count" %in% names(df)) {
+  df = frename(df, plt_nadir = platelet_count)
+}
+if ("hemoglobin" %in% names(df)) {
+  df = frename(df, hgb_nadir = hemoglobin)
+}
+if ("lymphocytes_absolute" %in% names(df)) {
+  df = frename(df, alc_nadir = lymphocytes_absolute)
+}
+
+rm(overall_nadirs, hematox_labs)
+gc()
 
 ## hematotoxicity (ICAHT) - nadirs in day 0-30 ---------------------------------
 
@@ -270,11 +309,11 @@ df$severe_icaht_01   = replace_na(df$severe_icaht_01, 0L)
 df = df |>
   fmutate(
     neutropenia_grade = case_when(
-      anc_cells_ul < 100  ~ 4L,
-      anc_cells_ul < 500  ~ 3L,
-      anc_cells_ul < 1000 ~ 2L,
-      anc_cells_ul < 1500 ~ 1L,
-      anc_cells_ul >= 1500 ~ 0L,
+      anc_nadir < 100  ~ 4L,
+      anc_nadir < 500  ~ 3L,
+      anc_nadir < 1000 ~ 2L,
+      anc_nadir < 1500 ~ 1L,
+      anc_nadir >= 1500 ~ 0L,
       TRUE ~ NA_integer_),
 
     anemia_grade = case_when(
@@ -434,11 +473,10 @@ if (length(hlh_eligible) > 0) {
 }
 
 # Join to main df
-df = join(df, hlh_final, on = "patient_id", how = "left")
+df = join(df, hlh_final |> fselect(patient_id, hlh_01), on = "patient_id", how = "left", multiple = FALSE)
 
 # Fill missing values
-df$ferritin_10k_01      = replace_na(df$ferritin_10k_01, 0L)
-df$hlh_01                    = replace_na(df$hlh_01, 0L)
+df$hlh_01 = replace_na(df$hlh_01, 0L)
 
 
 rm(ferritin_hlh, hlh_eligible, hlh_final)
@@ -448,20 +486,30 @@ gc()
 
 ## lab trends by day (for export) ----------------------------------------------
 
-message("Calculating daily lab trends...")
-
-labs_daily = 
+labs_daily_mean = 
   fsubset(labs_raw, d_since_cart >= 0 & d_since_cart <= 30) |>
   fgroup_by(patient_id, lab_category, d_since_cart) |>
   fsummarize(lab_value = fmean(lab_value, na.rm = TRUE)) |>
   fungroup()
 
 ### add trajectory for grouping
-labs_daily = join(labs_daily, fselect(df, patient_id, trajectory), how = "inner")
+labs_daily_mean = join(labs_daily, fselect(df, patient_id, trajectory), how = "inner")
+
+daily_nadirs = join(daily_nadirs, fselect(df, patient_id, trajectory), how = "inner")
 
 ### aggregate by trajectory and day
-labs_trend_by_traj = 
-  fgroup_by(labs_daily, trajectory, lab_category, d_since_cart) |>
+labs_trend_mean_traj = 
+  fgroup_by(labs_daily_mean, trajectory, lab_category, d_since_cart) |>
+  fsummarize(
+    n       = fnobs(lab_value),
+    sum_x   = fsum(lab_value, na.rm = TRUE),
+    sum_x_sq = fsum(lab_value^2, na.rm = TRUE)
+  ) |>
+  fungroup() |>
+  roworder(lab_category, trajectory, d_since_cart)
+
+labs_trend_nadir_traj = 
+  fgroup_by(daily_nadirs, trajectory, lab_category, d_since_cart) |>
   fsummarize(
     n       = fnobs(lab_value),
     sum_x   = fsum(lab_value, na.rm = TRUE),
@@ -471,9 +519,10 @@ labs_trend_by_traj =
   roworder(lab_category, trajectory, d_since_cart)
 
 ### save for export (will be picked up in 06_export.R)
-labs_trend_export = labs_trend_by_traj
+labs_trend_mean_export = labs_trend_mean_traj
+labs_trend_nadir_export = labs_trend_nadir_traj
 
-rm(labs_daily, labs_trend_by_traj, labs_raw)
+rm(labs_daily, labs_trend_mean_traj, labs_raw, daily_nadirs, labs_trend_nadir_traj)
 gc()
 
 
