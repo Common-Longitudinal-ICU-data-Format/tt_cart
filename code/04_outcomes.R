@@ -264,27 +264,41 @@ df = join(df, icaht_calc, how = "left", multiple = FALSE)
 df$icaht_grade       = replace_na(df$icaht_grade, 0L)
 df$severe_icaht_01   = replace_na(df$severe_icaht_01, 0L)
 
-
-## hyperferritinemia (HLH surrogate) -------------------------------------------
-
-message("Calculating hyperferritinemia...")
-
-ferritin_max = 
-  fsubset(labs_raw, lab_category == "ferritin" & d_since_cart >= 0 & d_since_cart <= 30) |>
-  fgroup_by(patient_id) |>
-  fsummarize(ferritin_max_30d = fmax(lab_value, na.rm = TRUE)) |>
-  fungroup()
-
-df = join(df, ferritin_max, how = "left", multiple = FALSE)
+## CTCAE grading for hematologic toxicities ------------------------------------
+# Using overall nadirs, calculate worst CTCAE grades
 
 df = df |>
   fmutate(
-    hyperferritin_5k_01  = as.integer(!is.na(ferritin_max_30d) & ferritin_max_30d >= 5000),
-    hyperferritin_10k_01 = as.integer(!is.na(ferritin_max_30d) & ferritin_max_30d >= 10000)
+    neutropenia_grade = case_when(
+      anc_cells_ul < 100  ~ 4L,
+      anc_cells_ul < 500  ~ 3L,
+      anc_cells_ul < 1000 ~ 2L,
+      anc_cells_ul < 1500 ~ 1L,
+      anc_cells_ul >= 1500 ~ 0L,
+      TRUE ~ NA_integer_
+    ),
+
+    anemia_grade = case_when(
+      hgb_nadir < 8.0  ~ 3L,
+      hgb_nadir < 10.0 ~ 2L,
+      hgb_nadir < 12.0 ~ 1L,
+      hgb_nadir >= 12.0 ~ 0L,
+      TRUE ~ NA_integer_
+    ),
+
+    thrombocytopenia_grade = case_when(
+      plt_nadir < 25  ~ 4L,
+      plt_nadir < 50  ~ 3L,
+      plt_nadir < 75  ~ 2L,
+      plt_nadir < 150 ~ 1L,
+      plt_nadir >= 150 ~ 0L,
+      TRUE ~ NA_integer_
+    )
   )
 
-rm(ferritin_max)
-gc()
+## IEC-HLH -------------------------------------------
+
+
 
 
 ## lab trends by day (for export) ----------------------------------------------
