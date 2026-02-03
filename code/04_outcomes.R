@@ -783,6 +783,14 @@ steroid_summary =
     steroid_days_30d = fnobs(d_since)
   )
 
+##Medication trends day 0-30 by trajectory---------------------------------------
+meds_trend_by_traj = 
+  rbind(
+    fselect(meds_trend_toci, trajectory, medication, d_since_cart, n_patients, sum_doses, sum_doses_sq),
+    fselect(meds_trend_anakinra, trajectory, medication, d_since_cart, n_patients, sum_doses, sum_doses_sq),
+    fselect(meds_trend_steroid, trajectory, medication, d_since_cart, n_patients, sum_doses, sum_doses_sq)
+  )
+
 ## add meds to data frame ------------------------------------------------------
 
 df = join(df, toci_summary,              how = "left", multiple = FALSE)
@@ -801,21 +809,8 @@ df$apap_day_1           = replace_na(df$apap_day_1,           0)
 df$apap_day_2           = replace_na(df$apap_day_2,           0)
 df$apap_cum_0_2         = replace_na(df$apap_cum_0_2,         0)
 
-rm(weight, steroid_post, steroid_admin, steroid_map, toci_summary, anakinra_summary, apap_summary, steroid_baseline, steroid_summary)
-gc()
-
-## Save daily medication trends
-
-meds_trend_by_traj = 
-  rbind(
-    fselect(meds_trend_toci, trajectory, medication, d_since_cart, n_patients, sum_doses, sum_doses_sq),
-    fselect(meds_trend_anakinra, trajectory, medication, d_since_cart, n_patients, sum_doses, sum_doses_sq),
-    fselect(meds_trend_steroid, trajectory, medication, d_since_cart, n_patients, sum_doses, sum_doses_sq)
-  )
-
-save_output(meds_trend_by_traj, "meds_daily_by_trajectory", shareable = TRUE, subfolder = "trajectory")
-
-rm(toci_daily, toci_patient_daily, anakinra_daily, anakinra_patient_daily, meds_trend_anakinra, steroid_daily, steroid_patient_daily, meds_trend_steroid, meds_trend_by_traj)
+rm(weight, steroid_post, steroid_admin, steroid_map, toci_summary, anakinra_summary, apap_summary, steroid_baseline, steroid_summary, toci_daily, 
+   toci_patient_daily, meds_trend_toci, anakinra_daily, anakinra_patient_daily, meds_trend_anakinra, steroid_daily, steroid_patient_daily, meds_trend_steroid)
 gc()
 
 # antibiotics and cultures =====================================================
@@ -895,8 +890,9 @@ df = fselect(df, -discharge_category, -discharge_category_clean)
 
 save_output(labs_trend_mean_export, "lab_trends_mean_by_trajectory", shareable = TRUE, subfolder = "trajectory")
 save_output(labs_trend_nadir_export, "lab_trends_nadir_by_trajectory", shareable = TRUE, subfolder = "trajectory")
+save_output(meds_trend_by_traj, "meds_daily_by_trajectory", shareable = TRUE, subfolder = "trajectory")
 
-rm(labs_trend_mean_export,  labs_trend_nadir_export)
+rm(labs_trend_mean_export,  labs_trend_nadir_export, meds_trend_by_traj)
 gc()
 
 message("04_outcomes.R complete.")
