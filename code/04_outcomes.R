@@ -266,8 +266,8 @@ find_max_consecutive = function(values, threshold) {
 # Calculate for each patient
 icaht_calc = 
   anc_complete[!is.na(anc_filled), .(
-    max_consec_lt500 = find_max_consecutive(anc_filled, 500),
-    max_consec_lt100 = find_max_consecutive(anc_filled, 100),
+    max_consec_lt500 = find_max_consecutive(anc_filled, 0.5),
+    max_consec_lt100 = find_max_consecutive(anc_filled, 0.1),
     max_anc          = max(anc_filled, na.rm = TRUE),
     min_anc          = min(anc_filled, na.rm = TRUE),
     n_days_with_data = sum(!is.na(anc))
@@ -284,7 +284,7 @@ icaht_calc =
   as_tidytable() |>
   fmutate(
     icaht_grade = case_when(
-      max_anc <= 500                                      ~ 4L,  # Never above 500
+      max_anc <= 0.5                                      ~ 4L,  # Never above 500
       max_consec_lt100 >= 14                              ~ 4L,  # <100 for ≥14 consecutive days
       max_consec_lt100 >= 7                               ~ 3L,  # <100 for ≥7 consecutive days
       max_consec_lt500 >= 14                              ~ 3L,  # <500 for ≥14 consecutive days
@@ -309,11 +309,11 @@ df$severe_icaht_01   = replace_na(df$severe_icaht_01, 0L)
 df = df |>
   fmutate(
     neutropenia_grade = case_when(
-      anc_nadir < 100  ~ 4L,
-      anc_nadir < 500  ~ 3L,
-      anc_nadir < 1000 ~ 2L,
-      anc_nadir < 1500 ~ 1L,
-      anc_nadir >= 1500 ~ 0L,
+      anc_nadir < 0.1  ~ 4L,
+      anc_nadir < 0.5  ~ 3L,
+      anc_nadir < 1.0 ~ 2L,
+      anc_nadir < 1.5 ~ 1L,
+      anc_nadir >= 1.5 ~ 0L,
       TRUE ~ NA_integer_),
 
     anemia_grade = case_when(
@@ -493,7 +493,7 @@ labs_daily_mean =
   fungroup()
 
 ### add trajectory for grouping
-labs_daily_mean = join(labs_daily, fselect(df, patient_id, trajectory), how = "inner")
+labs_daily_mean = join(labs_daily_mean, fselect(df, patient_id, trajectory), how = "inner")
 
 daily_nadirs = join(daily_nadirs, fselect(df, patient_id, trajectory), how = "inner")
 
@@ -511,9 +511,9 @@ labs_trend_mean_traj =
 labs_trend_nadir_traj = 
   fgroup_by(daily_nadirs, trajectory, lab_category, d_since_cart) |>
   fsummarize(
-    n       = fnobs(lab_value),
-    sum_x   = fsum(lab_value, na.rm = TRUE),
-    sum_x_sq = fsum(lab_value^2, na.rm = TRUE)
+    n       = fnobs(nadir_value),
+    sum_x   = fsum(nadir_value, na.rm = TRUE),
+    sum_x_sq = fsum(nadir_value^2, na.rm = TRUE)
   ) |>
   fungroup() |>
   roworder(lab_category, trajectory, d_since_cart)
@@ -522,7 +522,7 @@ labs_trend_nadir_traj =
 labs_trend_mean_export = labs_trend_mean_traj
 labs_trend_nadir_export = labs_trend_nadir_traj
 
-rm(labs_daily, labs_trend_mean_traj, labs_raw, daily_nadirs, labs_trend_nadir_traj)
+rm(labs_daily_mean, labs_trend_mean_traj, labs_raw, daily_nadirs, labs_trend_nadir_traj)
 gc()
 
 
@@ -535,24 +535,54 @@ toci =
   dplyr::filter(tolower(med_category) == "tocilizumab") |>
   dplyr::filter(admin_dttm >= start_date) |>
   dplyr::select(hospitalization_id, admin_dttm) |>
-  dplyr::collect() |>
-  join(hid_jid_crosswalk, how = "inner", multiple = FALSE) |>
+  dplyr::collect()
+
+toci = 
+  join(toci, all_hid_crosswalk, on = "hospitalization_id", how = "inner", multiple = TRUE) |>
   fselect(patient_id, toci_dttm = admin_dttm)
 
 toci = 
-  join(toci, anchor_df, how = "inner", multiple = TRUE) |>
+  join(toci, anchor_df, on = "patient_id", how = "inner", multiple = TRUE) |>
   fsubset(toci_dttm >= cart_t0 & toci_dttm <= cart_t0 + ddays(30)) |>
-  ftransform(one = 1L) |>
-  funique() |>
-  roworder(toci_dttm) |>
+  fmutate(d_since_cart = as.integer(floor(as.numeric(difftime(toci_dttm, cart_t0, units = "days"))))) |>
+  funique()
+
+# Daily dose counts
+toci_daily = 
+  fgroup_by(toci, patient_id, d_since_cart) |>
+  fsummarize(n_doses = fnobs(toci_dttm)) |>
+  fungroup()
+
+toci_patient_daily = 
+  toci_daily |>
+  join(fselect(df, patient_id, trajectory), on = "patient_id", how = "inner") |>
+  fselect(patient_id, trajectory, d_since_cart, toci_n_doses = n_doses)
+
+meds_trend_toci = 
+  fgroup_by(toci_patient_daily, trajectory, d_since_cart) |>
+  fsummarize(
+    n_patients  = fnobs(patient_id),
+    sum_doses   = fsum(toci_n_doses, na.rm = TRUE),
+    sum_doses_sq = fsum(toci_n_doses^2, na.rm = TRUE)
+  ) |>
+  fungroup() |>
+  fmutate(medication = "tocilizumab") |>
+  roworder(trajectory, d_since_cart)
+
+# Overall summary
+toci_summary = 
+  roworder(toci, patient_id, toci_dttm) |>
   fgroup_by(patient_id) |>
   fsummarize(
-    tfirst           = ffirst(toci_dttm),
-    toci_n_doses_30d = fsum(one),
+    toci_first_dttm  = ffirst(toci_dttm),
+    toci_n_doses_30d = fnobs(toci_dttm),
     cart_t0          = ffirst(cart_t0)
   ) |>
-  fmutate(h_until_toci = as.numeric(difftime(tfirst, cart_t0, units = "hours"))) |>
+  fmutate(h_until_toci = as.numeric(difftime(toci_first_dttm, cart_t0, units = "hours"))) |>
   fselect(patient_id, toci_n_doses_30d, h_until_toci)
+
+rm(toci)
+gc()
 
 ## anakinra --------------------------------------------------------------------
 
@@ -561,24 +591,53 @@ anakinra =
   dplyr::filter(tolower(med_category) == "anakinra") |>
   dplyr::filter(admin_dttm >= start_date) |>
   dplyr::select(hospitalization_id, admin_dttm) |>
-  dplyr::collect() |>
-  join(hid_jid_crosswalk, how = "inner", multiple = FALSE) |>
+  dplyr::collect()
+
+anakinra = 
+  join(anakinra, all_hid_crosswalk, on = "hospitalization_id", how = "inner", multiple = TRUE) |>
   fselect(patient_id, ana_dttm = admin_dttm)
 
 anakinra = 
-  join(anakinra, anchor_df, how = "inner", multiple = TRUE) |>
+  join(anakinra, anchor_df, on = "patient_id", how = "inner", multiple = TRUE) |>
   fsubset(ana_dttm >= cart_t0 & ana_dttm <= cart_t0 + ddays(30)) |>
-  ftransform(one = 1L) |>
-  funique() |>
-  roworder(ana_dttm) |>
+  fmutate(d_since_cart = as.integer(floor(as.numeric(difftime(ana_dttm, cart_t0, units = "days"))))) |>
+  funique()
+
+# Daily dose counts
+anakinra_daily = 
+  fgroup_by(anakinra, patient_id, d_since_cart) |>
+  fsummarize(n_doses = fnobs(ana_dttm)) |>
+  fungroup()
+
+anakinra_patient_daily = 
+  anakinra_daily |>
+  join(fselect(df, patient_id, trajectory), on = "patient_id", how = "inner") |>
+  fselect(patient_id, trajectory, d_since_cart, anakinra_n_doses = n_doses)
+
+meds_trend_anakinra = 
+  fgroup_by(anakinra_patient_daily, trajectory, d_since_cart) |>
+  fsummarize(
+    n_patients  = fnobs(patient_id),
+    sum_doses   = fsum(anakinra_n_doses, na.rm = TRUE),
+    sum_doses_sq = fsum(anakinra_n_doses^2, na.rm = TRUE)
+  ) |>
+  fungroup() |>
+  fmutate(medication = "anakinra") |>
+  roworder(trajectory, d_since_cart)
+
+# Overall summary
+anakinra_summary = 
+  roworder(anakinra, patient_id, ana_dttm) |>
   fgroup_by(patient_id) |>
   fsummarize(
-    afirst               = ffirst(ana_dttm),
-    anakinra_n_doses_30d = fsum(one),
+    anakinra_first_dttm  = ffirst(ana_dttm),
+    anakinra_n_doses_30d = fnobs(ana_dttm),
     cart_t0              = ffirst(cart_t0)
   ) |>
-  fmutate(h_until_anakinra = as.numeric(difftime(afirst, cart_t0, units = "hours"))) |>
+  fmutate(h_until_anakinra = as.numeric(difftime(anakinra_first_dttm, cart_t0, units = "hours"))) |>
   fselect(patient_id, anakinra_n_doses_30d, h_until_anakinra)
+
+rm(anakinra)
 
 ## acetaminophen ---------------------------------------------------------------
 
@@ -587,24 +646,35 @@ apap =
   dplyr::filter(tolower(med_category) == "acetaminophen") |>
   dplyr::filter(admin_dttm >= start_date) |>
   dplyr::select(hospitalization_id, admin_dttm, med_dose) |>
-  dplyr::collect() |>
-  join(hid_jid_crosswalk, how = "inner", multiple = FALSE) |>
+  dplyr::collect()
+
+apap = 
+  join(apap, all_hid_crosswalk, on = "hospitalization_id", how = "inner", multiple = TRUE) |>
   fselect(patient_id, apap_dttm = admin_dttm, med_dose)
 
 apap = 
-  join(apap, anchor_df, how = "inner", multiple = TRUE) |>
+  join(apap, anchor_df, on = "patient_id", how = "inner", multiple = TRUE) |>
   fsubset(apap_dttm >= cart_t0 & apap_dttm <= cart_t0 + ddays(3)) |>
-  funique() |>
-  roworder(apap_dttm) |>
-  fmutate(h_since = as.numeric(difftime(apap_dttm, cart_t0), "hours")) |>
-  fmutate(d_since = as.integer(floor(h_since/24))) |>
-  fgroup_by(patient_id, d_since) |>
+  fmutate(d_since_cart = as.integer(floor(as.numeric(difftime(apap_dttm, cart_t0, units = "days"))))) |>
+  funique()
+
+# Daily cumulative doses (days 0-2)
+apap_summary = 
+  fgroup_by(apap, patient_id, d_since_cart) |>
   fsummarize(apap_cum = fsum(med_dose, na.rm = TRUE)) |>
+  fungroup() |>
   pivot_wider(
-    names_from   = d_since,
+    names_from   = d_since_cart,
     values_from  = apap_cum,
     names_prefix = "apap_day_"
-  ) 
+  ) |>
+  fmutate(
+    apap_cum_0_2 = replace_na(apap_day_0, 0) +
+                   replace_na(apap_day_1, 0) +
+                   replace_na(apap_day_2, 0))
+
+rm(apap)
+gc()
 
 ## steroids --------------------------------------------------------------------
 
@@ -648,17 +718,32 @@ steroid_admin =
   dplyr::collect() 
 
 steroid_admin = 
-  join(steroid_admin, hid_jid_crosswalk, how = "inner", multiple = TRUE) |>
-  fselect(-hospitalization_id, -joined_hosp_id) |>
+  join(steroid_admin, all_hid_crosswalk, on = "hospitalization_id", how = "inner", multiple = TRUE) |>
+  fselect(-hospitalization_id) |>
   funique()
 
-steroid_admin = 
-  join(steroid_admin, anchor_df, how = "inner", multiple = TRUE) |>
+steroid_baseline = 
+  join(steroid_admin, anchor_df, on = "patient_id", how = "inner", multiple = TRUE) |>
+  fsubset(admin_dttm >= cart_t0 - dhours(24) & admin_dttm < cart_t0)
+
+steroid_baseline =
+  join(steroid_baseline, weight, on = "patient_id", how = "left", multiple = FALSE) |>
+  fmutate(u = fifelse(med_dose_unit == "mg/kg/day", "mg/kg", med_dose_unit)) |>
+  fmutate(dose_mg = fifelse(u == "mg", med_dose, med_dose*weight_kg)) |>
+  fsubset(!is.na(dose_mg)) |>
+  join(steroid_map, on = "med_category", how = "inner") |>
+  fmutate(dex_mg_equivalent = dose_mg * dex_factor) |>
+  fgroup_by(patient_id) |>
+  fsummarize(baseline_steroid = fsum(dex_mg_equivalent, na.rm = TRUE)) |>
+  fungroup()
+
+steroid_post = 
+  join(steroid_admin, anchor_df, on = "patient_id", how = "inner", multiple = TRUE) |>
   fsubset(admin_dttm >= cart_t0) |>
   fsubset(admin_dttm <= cart_t0 + ddays(30))
 
-steroid_admin = 
-  join(steroid_admin, weight, how = "left", multiple = FALSE) |>
+steroid_post = 
+  join(steroid_post, weight, how = "left", multiple = FALSE) |>
   fmutate(u = fifelse(med_dose_unit == "mg/kg/day", "mg/kg", med_dose_unit)) |>
   fmutate(dose_mg = fifelse(u == "mg", med_dose, med_dose*weight_kg)) |>
   fsubset(!is.na(dose_mg)) |>
@@ -668,47 +753,70 @@ steroid_admin =
   funique()
 
 steroid_daily = 
-  join(steroid_admin, steroid_map, how = "inner") |>
+  join(steroid_post, steroid_map, how = "inner") |>
   ftransform(dex_mg_equivalent = dose_mg*dex_factor) |>
   fgroup_by(patient_id, d_since) |>
   fsummarise(dex_mg_equivalent = fsum(dex_mg_equivalent, na.rm = TRUE)) |>
   fungroup() |>
   fsubset(dex_mg_equivalent >= 10)
 
-steroid_daily = 
+steroid_patient_daily = 
+  steroid_daily |>
+  join(fselect(df, patient_id, trajectory), on = "patient_id", how = "inner") |>
+  fselect(patient_id, trajectory, d_since, steroid_dex_eq = dex_mg_equivalent)
+
+meds_trend_steroid = 
+  fgroup_by(steroid_patient_daily, trajectory, d_since) |>
+  fsummarize(
+    n_patients  = fnobs(patient_id),
+    sum_doses   = fsum(steroid_dex_eq, na.rm = TRUE),
+    sum_doses_sq = fsum(steroid_dex_eq^2, na.rm = TRUE)
+  ) |>
+  fungroup() |>
+  fmutate(medication = "steroid_dex_eq") |>
+  roworder(trajectory, d_since_cart)
+
+steroid_summary = 
   fgroup_by(steroid_daily, patient_id) |>
   fsummarize(
     steroid_any_72h  = as.integer(any(d_since <= 2)),
-    steroid_days_30d = fnobs(d_since)  
+    steroid_days_30d = fnobs(d_since)
   )
-
-steroid = 
-  roworder(steroid_admin, admin_dttm) |>
-  fgroup_by(patient_id) |>
-  fsummarize(steroid_first = ffirst(admin_dttm)) |>
-  join(steroid_daily, how = "full", multiple = FALSE)
 
 ## add meds to data frame ------------------------------------------------------
 
-df = join(df, toci,     how = "left", multiple = FALSE)
-df = join(df, anakinra, how = "left", multiple = FALSE)
-df = join(df, apap,     how = "left", multiple = FALSE)
-df = join(df, steroid,  how = "left", multiple = FALSE)
+df = join(df, toci_summary,              how = "left", multiple = FALSE)
+df = join(df, anakinra_summary,          how = "left", multiple = FALSE)
+df = join(df, apap_summary,              how = "left", multiple = FALSE)
+df = join(df, steroid_baseline,          how = "left", multiple = FALSE)
+df = join(df, steroid_summary,                   how = "left", multiple = FALSE)
 
 df$toci_n_doses_30d     = replace_na(df$toci_n_doses_30d,     0L)
 df$anakinra_n_doses_30d = replace_na(df$anakinra_n_doses_30d, 0L)
 df$steroid_days_30d     = replace_na(df$steroid_days_30d,     0L)
+df$steroid_any_72h      = replace_na(df$steroid_any_72h,      0L)
+df$baseline_steroid     = replace_na(df$baseline_steroid,     0L)
 df$apap_day_0           = replace_na(df$apap_day_0,           0)
 df$apap_day_1           = replace_na(df$apap_day_1,           0)
 df$apap_day_2           = replace_na(df$apap_day_2,           0)
-df$steroid_any_72h      = replace_na(df$steroid_any_72h,      0L)
-df$h_until_steroids     = as.numeric(difftime(df$steroid_first, df$admin_dttm), "hours")
+df$apap_cum_0_2         = replace_na(df$apap_cum_0_2,         0)
 
-df = fselect(df, -steroid_first)
-
-rm(toci, anakinra, apap, weight, steroid, steroid_admin, steroid_daily, steroid_map)
+rm(weight, steroid_post, steroid_admin, steroid_map, toci_summary, anakinra_summary, apap_summary, steroid_baseline, steroid_summary)
 gc()
 
+## Save daily medication trends
+
+meds_trend_by_traj = 
+  rbind(
+    fselect(meds_trend_toci, trajectory, medication, d_since_cart, n_patients, sum_doses, sum_doses_sq),
+    fselect(meds_trend_anakinra, trajectory, medication, d_since_cart, n_patients, sum_doses, sum_doses_sq),
+    fselect(meds_trend_steroid, trajectory, medication, d_since_cart, n_patients, sum_doses, sum_doses_sq)
+  )
+
+save_output(meds_trend_by_traj, "meds_daily_by_trajectory", shareable = TRUE, subfolder = "trajectory")
+
+rm(toci_daily, toci_patient_daily, anakinra_daily, anakinra_patient_daily, meds_trend_anakinra, steroid_daily, steroid_patient_daily, meds_trend_steroid, meds_trend_by_traj)
+gc()
 
 # antibiotics and cultures =====================================================
 
@@ -785,9 +893,10 @@ gc()
 
 df = fselect(df, -discharge_category, -discharge_category_clean)
 
-save_output(labs_trend_export, "lab_trends_by_trajectory", shareable = TRUE, subfolder = "trajectory")
+save_output(labs_trend_mean_export, "lab_trends_mean_by_trajectory", shareable = TRUE, subfolder = "trajectory")
+save_output(labs_trend_nadir_export, "lab_trends_nadir_by_trajectory", shareable = TRUE, subfolder = "trajectory")
 
-rm(labs_trend_export)
+rm(labs_trend_mean_export,  labs_trend_nadir_export)
 gc()
 
 message("04_outcomes.R complete.")
