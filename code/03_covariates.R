@@ -91,19 +91,19 @@ expand_icd_range = function(base, subtypes) {
   unlist(lapply(paste0(base, ".", subtypes), expand_icd))
 }
 
-dx_groups = list(
-  myeloma      = expand_icd_range("C90", c("0", "1", "2", "3")),
-  dlbcl        = expand_icd("C83.3"),
-  follicular   = expand_icd_range("C82", c("0", "1", "2", "3", "4", "5", "6", "8", "9")),
-  mantle_cell  = expand_icd("C83.1"),
-  marginal     = expand_icd("C83.0"),
-  burkitt      = expand_icd("C83.7"),
-  other_nhl    = expand_icd("C83.5"),
-  nhl_nos      = expand_icd("C83.9"),
-  lymphoma_nos = expand_icd_range("C85", c("1", "2", "8", "9")),
-  cll_sll      = expand_icd("C91.1"),
-  b_all        = c("C91.00", "C91.01", "C91.02"),
-  hct          = c("Z94.81", "Z94.84", paste0("T86.0", 0:3), "T86.09", "T86.5")
+dx_groups <- list(
+  follicular         = expand_icd_range("C82", c("0","1","2","3","4","5","6","8","9")),
+  scbcl              = expand_icd("C83.0"),                
+  mantle_cell        = expand_icd("C83.1"),
+  dlbcl              = expand_icd("C83.3"),
+  lymphoblastic      = expand_icd("C83.5"),
+  burkitt            = expand_icd("C83.7"),
+  non_follicular_nos = expand_icd(c("C83.8","C83.9")),
+  nhl_nos            = c(expand_icd("C88.4"), expand_icd_range("C85", c("1","2","8","9"))),
+  myeloma            = expand_icd_range("C90", c("0","1","2","3")),
+  b_all              = c("C91.00","C91.01","C91.02"),
+  cll                = expand_icd(c("C91.10","C91.11","C91.12")),
+  hct                = c("Z94.81","Z94.84", paste0("T86.0", 0:3), "T86.09","T86.5")
 )
 
 dx_lookup = 
@@ -126,9 +126,18 @@ hct_vec =
 ## determine primary cancer category -------------------------------------------
 
 lymphoma_priority = tidytable(
-  cancer_cat = c("dlbcl", "mantle_cell", "follicular", "marginal", 
-                 "burkitt", "cll_sll", "other_nhl", "nhl_nos", "lymphoma_nos"),
-  lym_rank   = 1L:9L
+  cancer_cat = c(
+    "dlbcl",
+    "mantle_cell",
+    "burkitt",
+    "lymphoblastic",
+    "follicular",
+    "scbcl",
+    "cll",
+    "non_follicular_nos",
+    "nhl_nos"
+  ),
+  lym_rank = 1L:9L
 )
 
 cart_indication = tidytable(
