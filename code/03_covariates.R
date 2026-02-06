@@ -184,9 +184,10 @@ dx_primary =
   fgroup_by(patient_id) |>
   ffirst() |>
   fsubset(indication_match) |>
-  fselect(patient_id, cancer_cat)
+  fselect(patient_id, cancer_cat, dx_broad)
 
-df = join(df, dx_primary, how = "left") 
+df = join(df, dx_primary, how = "left")
+
 
 df$hct_01 = as.integer(df$patient_id %in% hct_vec)
 
