@@ -109,12 +109,14 @@ enc =
 
 ## join to first CAR-T per patient ---------------------------------------------
 
-df = 
+df =
   join(enc, cart, how = "inner") |>
-  roworder(admin_dttm) |>
+  roworder(patient_id, admin_dttm) |>
   fmutate(cart_t0 = admin_dttm) |>
   fgroup_by(patient_id) |>
-  ffirst()
+  ffirst() |>
+  fungroup() |>
+  fselect(-admin_dttm)
 
 rm(cart, enc)
 gc()
