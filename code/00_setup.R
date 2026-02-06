@@ -34,7 +34,10 @@ packages_to_load =
     "stringr",
     "arrow",        
     "here",         
-    "ps"
+    "ps",
+    "dplyr",
+    "rlang",
+    "comorbidity"
   )
 
 fn_install_if_missing = function(p) {
