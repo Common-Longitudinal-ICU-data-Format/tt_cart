@@ -205,9 +205,7 @@ df$dx_broad_final = case_when(
   TRUE                                     ~ "lymphoma"
 )
   
-rm(dx_primary, dx_with_cart, cart_indication)
-rm(hct_vec, dx_cancer, dx_lookup, dx_groups, lymphoma_priority)
-rm(expand_icd, expand_icd_range, hids_of_interest)
+rm(dx_primary, dx_with_cart, cart_indication, hct_vec, dx_cancer, dx_lookup, dx_groups, lymphoma_priority, expand_icd, expand_icd_range, hids_of_interest)
 gc()
 
 # elixhauser comorbidities =====================================================
