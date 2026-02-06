@@ -242,6 +242,7 @@ required_tables =
     "hospital_diagnosis",
     "respiratory_support", 
     "microbiology_culture",
+    "microbiology_nonculture",
     "medication_admin_continuous", 
     "medication_admin_intermittent"
   )
@@ -460,7 +461,11 @@ validation_specs = list(
   ),
   list(
     table_name = "microbiology_culture",
-    req_vars   = c("hospitalization_id", "result_dttm", "fluid_category", "organism_category")
+    req_vars   = c("hospitalization_id", "collect_dttm", "result_dttm", "fluid_category", "organism_category")
+  ),
+  list(
+    table_name = "microbiology_nonculture",
+    req_vars   = c("hospitalization_id", "collect_dttm", "result_dttm", "method_category", "organism_category", "result_category")
   ),
   list(
     table_name = "hospital_diagnosis",
