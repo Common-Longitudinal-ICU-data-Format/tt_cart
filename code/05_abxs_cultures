@@ -244,12 +244,12 @@ cultures =
   dplyr::filter(!is.na(collect_dttm)) |>
   dplyr::filter(!is.na(organism_group)) |>
   dplyr::filter(tolower(organism_group) %!in% exclude_organisms) |>
-  dplyr::select(hospitalization_id, collect_dttm, fluid_category, organism_group) |>
+  dplyr::select(hospitalization_id, organism_id, collect_dttm, fluid_category, organism_group) |>
   dplyr::collect()
 
 cultures = 
   join(cultures, all_hid_crosswalk, on = "hospitalization_id", how = "inner", multiple = TRUE) |>
-  fselect(patient_id, collect_dttm, fluid_category, organism_group) |>
+  fselect(patient_id, collect_dttm, fluid_category, organism_group, organism_id) |>
   funique()
 
 ## Load PCR data ---------------------------------------------------------------
@@ -267,6 +267,7 @@ pcr =
 pcr = 
   join(pcr, all_hid_crosswalk, on = "hospitalization_id", how = "inner", multiple = TRUE) |>
   fselect(patient_id, collect_dttm, fluid_category, organism_group) |>
+  fmutate(organism_id = NA_character_) |> 
   funique()
 
 
@@ -659,4 +660,23 @@ save_output(infections_3_30d_fungal_daily, "infections_3_30d_fungal_trajectory",
 save_output(infections_3_30d_daily_combined, "infections_3_30d_combined_trajectory", shareable = TRUE, subfolder = "trajectory")
 
 
+# identify patients with untreated infections in 0-72h ======================================================================================
 
+cohort_72h_infection = 
+  fsubset(df, infection_72h_01 == 1) |>
+  fselect(patient_id, trajectory, infection_72h_first_h)
+
+# load susceptibility data =====================================================
+
+suscept_raw = 
+  data_list$microbiology_susceptibility |>
+  dplyr::filter(!is.na(susceptibility_category)) |>
+  dplyr::filter(!is.na(antimicrobial_category)) |>
+  dplyr::select(hospitalization_id, collect_dttm, result_dttm, organism_group, 
+                antimicrobial_category, susceptibility_category) |>
+  dplyr::collect()
+
+suscept = 
+  join(suscept_raw, cohort_72h_infection, on = "hospitalization_id", how = "inner", multiple = TRUE) |>
+  fselect(patient_id, collect_dttm, result_dttm, organism_group, antimicrobial_category, susceptibility_category) |>
+  funique()
