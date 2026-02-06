@@ -184,7 +184,7 @@ dx_primary =
   fgroup_by(patient_id) |>
   ffirst() |>
   fsubset(indication_match) |>
-  fselect(patient_id, cancer_cat, dx_broad)
+  fselect(patient_id, cancer_cat)
 
 df = join(df, dx_primary, how = "left")
 
@@ -200,6 +200,11 @@ df$cancer_cat = case_when(
   TRUE                                           ~ "unknown"
 )
 
+df$dx_broad_final = case_when(
+  df$cancer_cat %in% c("myeloma", "b_all", "unknown") ~ df$cancer_cat,
+  TRUE                                     ~ "lymphoma"
+)
+  
 rm(dx_primary, dx_with_cart, cart_indication)
 rm(hct_vec, dx_cancer, dx_lookup, dx_groups, lymphoma_priority)
 rm(expand_icd, expand_icd_range, hids_of_interest)
