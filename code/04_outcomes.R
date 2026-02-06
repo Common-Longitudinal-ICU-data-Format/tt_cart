@@ -748,8 +748,8 @@ steroid_post =
   fmutate(dose_mg = fifelse(u == "mg", med_dose, med_dose*weight_kg)) |>
   fsubset(!is.na(dose_mg)) |>
   ftransform(h_since = as.numeric(difftime(admin_dttm, cart_t0), "hours")) |>
-  ftransform(d_since = as.integer(floor(h_since/24))) |>
-  fselect(patient_id, d_since, cart_t0, admin_dttm, med_category, dose_mg) |>
+  ftransform(d_since_cart = as.integer(floor(h_since/24))) |>
+  fselect(patient_id, d_since_cart, cart_t0, admin_dttm, med_category, dose_mg) |>
   funique()
 
 steroid_daily = 
@@ -763,10 +763,10 @@ steroid_daily =
 steroid_patient_daily = 
   steroid_daily |>
   join(fselect(df, patient_id, trajectory), on = "patient_id", how = "inner") |>
-  fselect(patient_id, trajectory, d_since, steroid_dex_eq = dex_mg_equivalent)
+  fselect(patient_id, trajectory, d_since_cart, steroid_dex_eq = dex_mg_equivalent)
 
 meds_trend_steroid = 
-  fgroup_by(steroid_patient_daily, trajectory, d_since) |>
+  fgroup_by(steroid_patient_daily, trajectory, d_since_cart) |>
   fsummarize(
     n_patients  = fnobs(patient_id),
     sum_doses   = fsum(steroid_dex_eq, na.rm = TRUE),
@@ -774,21 +774,21 @@ meds_trend_steroid =
   ) |>
   fungroup() |>
   fmutate(medication = "steroid_dex_eq") |>
-  roworder(trajectory, d_since)
+  roworder(trajectory, d_since_cart)
 
 steroid_summary = 
   fgroup_by(steroid_daily, patient_id) |>
   fsummarize(
-    steroid_any_72h  = as.integer(any(d_since <= 2)),
-    steroid_days_30d = fnobs(d_since)
+    steroid_any_72h  = as.integer(any(d_since_cart <= 2)),
+    steroid_days_30d = fnobs(d_since_cart)
   )
 
 ##Medication trends day 0-30 by trajectory---------------------------------------
 meds_trend_by_traj = 
   rbind(
-    fselect(meds_trend_toci, trajectory, medication, d_since, n_patients, sum_doses, sum_doses_sq),
-    fselect(meds_trend_anakinra, trajectory, medication, d_since, n_patients, sum_doses, sum_doses_sq),
-    fselect(meds_trend_steroid, trajectory, medication, d_since, n_patients, sum_doses, sum_doses_sq)
+    fselect(meds_trend_toci, trajectory, medication, d_since_cart, n_patients, sum_doses, sum_doses_sq),
+    fselect(meds_trend_anakinra, trajectory, medication, d_since_cart, n_patients, sum_doses, sum_doses_sq),
+    fselect(meds_trend_steroid, trajectory, medication, d_since_cart, n_patients, sum_doses, sum_doses_sq)
   )
 
 ## add meds to data frame ------------------------------------------------------
