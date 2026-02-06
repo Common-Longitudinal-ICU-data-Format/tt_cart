@@ -479,7 +479,7 @@ df = join(df, hlh_final |> fselect(patient_id, hlh_01), on = "patient_id", how =
 df$hlh_01 = replace_na(df$hlh_01, 0L)
 
 
-rm(ferritin_hlh, hlh_eligible, hlh_final)
+rm(ferritin_hlh, hlh_eligible, hlh_final, icaht_calc)
 gc()
 
 
