@@ -755,7 +755,7 @@ steroid_post =
 steroid_daily = 
   join(steroid_post, steroid_map, how = "inner") |>
   ftransform(dex_mg_equivalent = dose_mg*dex_factor) |>
-  fgroup_by(patient_id, d_since) |>
+  fgroup_by(patient_id, d_since_cart) |>
   fsummarise(dex_mg_equivalent = fsum(dex_mg_equivalent, na.rm = TRUE)) |>
   fungroup() |>
   fsubset(dex_mg_equivalent >= 10)
