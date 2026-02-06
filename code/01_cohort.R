@@ -112,6 +112,7 @@ enc =
 df = 
   join(enc, cart, how = "inner") |>
   roworder(admin_dttm) |>
+  fmutate(cart_t0 = admin_dttm) |>
   fgroup_by(patient_id) |>
   ffirst()
 
