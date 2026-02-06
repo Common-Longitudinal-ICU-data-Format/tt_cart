@@ -37,7 +37,8 @@ packages_to_load =
     "ps",
     "dplyr",
     "rlang",
-    "comorbidity"
+    "comorbidity",
+    "tidyr"
   )
 
 fn_install_if_missing = function(p) {
