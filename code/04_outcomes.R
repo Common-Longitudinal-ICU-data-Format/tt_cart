@@ -774,7 +774,7 @@ meds_trend_steroid =
   ) |>
   fungroup() |>
   fmutate(medication = "steroid_dex_eq") |>
-  roworder(trajectory, d_since_cart)
+  roworder(trajectory, d_since)
 
 steroid_summary = 
   fgroup_by(steroid_daily, patient_id) |>
@@ -786,9 +786,9 @@ steroid_summary =
 ##Medication trends day 0-30 by trajectory---------------------------------------
 meds_trend_by_traj = 
   rbind(
-    fselect(meds_trend_toci, trajectory, medication, d_since_cart, n_patients, sum_doses, sum_doses_sq),
-    fselect(meds_trend_anakinra, trajectory, medication, d_since_cart, n_patients, sum_doses, sum_doses_sq),
-    fselect(meds_trend_steroid, trajectory, medication, d_since_cart, n_patients, sum_doses, sum_doses_sq)
+    fselect(meds_trend_toci, trajectory, medication, d_since, n_patients, sum_doses, sum_doses_sq),
+    fselect(meds_trend_anakinra, trajectory, medication, d_since, n_patients, sum_doses, sum_doses_sq),
+    fselect(meds_trend_steroid, trajectory, medication, d_since, n_patients, sum_doses, sum_doses_sq)
   )
 
 ## add meds to data frame ------------------------------------------------------
