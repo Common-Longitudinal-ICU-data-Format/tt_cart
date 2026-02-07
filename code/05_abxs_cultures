@@ -11,188 +11,8 @@ if (!exists("df") || !exists("all_hid_crosswalk") || !exists("anchor_df") || !ex
   stop("Run 00_setup.R through 04_outcomes.R first.", call. = FALSE)
 }
 
+
 # antibiotics and cultures =====================================================
-
-## Define medication categories ------------------------------------------------
-
-# Broad-spectrum antibacterials
-broad_spectrum_abx = c(
-  "amikacin", "aztreonam", "cefepime", "cefiderocol", "ceftaroline", "ceftazidime",
-  "ceftazidime_avibactam", "ceftazidime_clavulanate", "ceftolozane_tazobactam",
-  "colistin", "dalbavancin", "daptomycin", "doripenem", "ertapenem", "fidaxomicin",
-  "gentamicin", "imipenem", "imipenem_relebactam", "linezolid", "meropenem",
-  "meropenem_vaborbactam", "metronidazole", "piperacillin_tazobactam", "tedizolid",
-  "telavancin", "tigecycline", "tobramycin", "vancomycin")
-
-# All antibacterials
-antibacterials = c(
-  broad_spectrum_abx,
-  "amoxicillin", "amoxicillin_clavulanate", "ampicillin", "ampicillin_sulbactam",
-  "azithromycin", "cefaclor", "cefadroxil", "cefamandole", "cefazolin", "cefdinir",
-  "cefixime", "cefmetazole", "cefonicid", "cefoperazone", "cefotaxime", "cefotetan",
-  "cefoxitin", "cefpodoxime", "cefprozil", "ceftibuten", "ceftizoxime", "ceftriaxone",
-  "cefuroxime", "cephalexin", "cephalothin", "cephapirin", "cephradine", "chloramphenicol",
-  "cinoxacin", "ciprofloxacin", "clarithromycin", "clindamycin", "cloxacillin",
-  "delafloxacin", "dicloxacillin", "doxycycline", "eravacycline", "erythromycin",
-  "fosfomycin", "gatifloxacin", "kanamycin", "lefamulin", "levofloxacin", "lincomycin",
-  "methicillin", "mezlocillin", "minocycline", "moxifloxacin", "nafcillin",
-  "nitrofurantoin", "norfloxacin", "ofloxacin", "omadacycline", "oritavancin",
-  "oxacillin", "penicillin", "pivampicillin", "plazomicin", "polymyxin_b",
-  "quinupristin_dalfopristin", "rifampin", "streptomycin", "sulbactam_durlobactam",
-  "sulfadiazine", "sulfadiazine_trimethoprim", "sulfisoxazole", "telithromycin",
-  "tetracycline", "ticarcillin", "ticarcillin_clavulanate", "trimethoprim",
-  "trimethoprim_sulfamethoxazole")
-
-# Antifungals
-antifungals = c(
-  "amphotericin_b", "anidulafungin", "caspofungin", "fluconazole", "isavuconazole",
-  "isavuconazonium", "itraconazole", "micafungin", "micafungin_posaconazole_voriconazole",
-  "posaconazole", "rezafungin", "voriconazole")
-
-# Antivirals
-antivirals = c(
-  "acyclovir", "cidofovir", "foscarnet", "ganciclovir", "maribavir", "oseltamivir",
-  "peramivir", "ribavirin", "valacyclovir", "valganciclovir")
-
-
-## Load all antimicrobials (baseline + post-CAR-T) ----------------------------
-
-antimicrobials = 
-  data_list$medication_admin_intermittent |>
-  dplyr::filter(med_group == "CMS_sepsis_qualifying_antibiotics") |>
-  dplyr::filter(admin_dttm >= start_date) |>
-  dplyr::select(hospitalization_id, admin_dttm, med_category) |>
-  dplyr::collect()
-
-antimicrobials = 
-  join(antimicrobials, all_hid_crosswalk, on = "hospitalization_id", how = "inner", multiple = TRUE) |>
-  fselect(patient_id, admin_dttm, med_category) |>
-  funique()
-
-antimicrobials = 
-  join(antimicrobials, anchor_df, on = "patient_id", how = "inner", multiple = TRUE) |>
-  fmutate(
-    med_class = case_when(
-      tolower(med_category) %in% antibacterials ~ "antibacterial",
-      tolower(med_category) %in% antifungals    ~ "antifungal",
-      tolower(med_category) %in% antivirals     ~ "antiviral",
-      TRUE                                      ~ "other"
-    ),
-    is_broad_spectrum = as.integer(tolower(med_category) %in% broad_spectrum_abx)
-  )
-
-## Baseline prophylaxis (24h before CAR-T) -------------------------------------
-ppx_baseline = 
-  fsubset(antimicrobials, admin_dttm >= cart_t0 - dhours(24) & admin_dttm < cart_t0) |>
-  fgroup_by(patient_id, med_class) |>
-  fsummarize(ppx_meds = paste(unique(med_category), collapse = "|")) |>
-  fungroup() |>
-  pivot_wider(
-    names_from  = med_class,
-    values_from = ppx_meds,
-    names_prefix = "ppx_")
-
-## Post-CAR-T antimicrobials (days 0-30) ---------------------------------------
-
-antimicrobials_post = 
-  fsubset(antimicrobials, admin_dttm >= cart_t0 & admin_dttm <= cart_t0 + ddays(30)) |>
-  fmutate(d_since_cart = as.integer(floor(as.numeric(difftime(admin_dttm, cart_t0, units = "days")))))
-
-## Daily new antimicrobial flags (different from baseline ppx) -----------------
-
-# Get baseline ppx lists per patient
-ppx_baseline_list = 
-  ppx_baseline |>
-  fselect(patient_id, ppx_antibacterial, ppx_antifungal, ppx_antiviral) |>
-  fmutate(
-    ppx_abx_list = strsplit(replace_na(ppx_antibacterial, ""), "\\|"),
-    ppx_af_list  = strsplit(replace_na(ppx_antifungal, ""), "\\|"),
-    ppx_av_list  = strsplit(replace_na(ppx_antiviral, ""), "\\|")
-  )
-
-# For each patient-day-medication, check if it's new (not in baseline ppx)
-antimicrobials_daily = 
-  antimicrobials_post |>
-  join(ppx_baseline_list, on = "patient_id", how = "left") |>
-  fmutate(
-    ppx_abx_delim = paste0("|", replace_na(ppx_antibacterial, ""), "|"),
-    ppx_af_delim  = paste0("|", replace_na(ppx_antifungal, ""), "|"),
-    ppx_av_delim  = paste0("|", replace_na(ppx_antiviral, ""), "|"),
-    med_delim     = paste0("|", med_category, "|"),
-    
-    is_new_abx = case_when(
-      med_class == "antibacterial" & is.na(ppx_antibacterial) ~ 1L,
-      med_class == "antibacterial" & !grepl(med_delim, ppx_abx_delim, fixed = TRUE) ~ 1L,
-      TRUE ~ 0L
-    ),
-    is_new_af = case_when(
-      med_class == "antifungal" & is.na(ppx_antifungal) ~ 1L,
-      med_class == "antifungal" & !grepl(med_delim, ppx_af_delim, fixed = TRUE) ~ 1L,
-      TRUE ~ 0L
-    ),
-    is_new_av = case_when(
-      med_class == "antiviral" & is.na(ppx_antiviral) ~ 1L,
-      med_class == "antiviral" & !grepl(med_delim, ppx_av_delim, fixed = TRUE) ~ 1L,
-      TRUE ~ 0L
-    )
-  ) |>
-  fselect(-ppx_abx_delim, -ppx_af_delim, -ppx_av_delim, -med_delim)
-
-# Aggregate to patient-day level and join with trajectory
-antimicrobials_daily_flags = 
-  fgroup_by(antimicrobials_daily, patient_id, d_since_cart) |>
-  fsummarize(
-    new_abx_01          = as.integer(fmax(is_new_abx, na.rm = TRUE) == 1),
-    new_antifungal_01   = as.integer(fmax(is_new_af, na.rm = TRUE) == 1),
-    new_antiviral_01    = as.integer(fmax(is_new_av, na.rm = TRUE) == 1),
-    broad_spectrum_01   = as.integer(fmax(is_broad_spectrum, na.rm = TRUE) == 1)
-  ) |>
-  fungroup()
-
-antimicrobials_daily_traj = 
-  antimicrobials_daily_flags |>
-  join(fselect(df, patient_id, trajectory), on = "patient_id", how = "inner")
-
-antimicrobials_trend_by_traj = 
-  fgroup_by(antimicrobials_daily_traj, trajectory, d_since_cart) |>
-  fsummarize(
-    n_patients_new_abx       = fsum(new_abx_01, na.rm = TRUE),
-    n_patients_new_af        = fsum(new_antifungal_01, na.rm = TRUE),
-    n_patients_new_av        = fsum(new_antiviral_01, na.rm = TRUE),
-    n_patients_broad_spec    = fsum(broad_spectrum_01, na.rm = TRUE)
-  ) |>
-  fungroup() |>
-  roworder(trajectory, d_since_cart)
-
-rm(ppx_baseline_list)
-gc()
-
-## Count days on broad-spectrum antibiotics ------------------------------------
-
-# Days 0-2 (72 hours)
-broad_spectrum_72h = 
-  fsubset(antimicrobials_daily_flags, d_since_cart <= 2 & broad_spectrum_01 == 1) |>
-  fgroup_by(patient_id) |>
-  fsummarize(broad_spectrum_days_72h = fnobs(d_since_cart)) |>
-  fungroup()
-
-# Days 3-30
-broad_spectrum_3_30 = 
-  fsubset(antimicrobials_daily_flags, d_since_cart >= 3 & d_since_cart <= 30 & broad_spectrum_01 == 1) |>
-  fgroup_by(patient_id) |>
-  fsummarize(broad_spectrum_days_3_30 = fnobs(d_since_cart)) |>
-  fungroup()
-
-df = join(df, broad_spectrum_72h, on = "patient_id", how = "left", multiple = FALSE)
-df = join(df, broad_spectrum_3_30, on = "patient_id", how = "left", multiple = FALSE)
-
-df$broad_spectrum_days_72h  = replace_na(df$broad_spectrum_days_72h, 0L)
-df$broad_spectrum_days_3_30 = replace_na(df$broad_spectrum_days_3_30, 0L)
-
-rm(broad_spectrum_72h, broad_spectrum_3_30)
-gc()
-
-
 ## Organism classification -----------------------------------------------------
 
 bacterial_organisms = c(
@@ -660,23 +480,392 @@ save_output(infections_3_30d_fungal_daily, "infections_3_30d_fungal_trajectory",
 save_output(infections_3_30d_daily_combined, "infections_3_30d_combined_trajectory", shareable = TRUE, subfolder = "trajectory")
 
 
-# identify patients with untreated infections in 0-72h ======================================================================================
+##Antimicrobial exposure
+## broad-spectrum antibacterials -----------------------------------------------
 
-cohort_72h_infection = 
-  fsubset(df, infection_72h_01 == 1) |>
-  fselect(patient_id, trajectory, infection_72h_first_h)
+broad_spectrum_abx = c(
+  "amikacin", "aztreonam", "cefepime", "cefiderocol", "ceftaroline", 
+  "ceftazidime", "ceftazidime_avibactam", "ceftazidime_clavulanate", 
+  "ceftolozane_tazobactam", "colistin", "dalbavancin", "daptomycin", 
+  "doripenem", "eravacycline", "ertapenem", "fidaxomicin", "gentamicin", 
+  "imipenem", "imipenem_relebactam", "linezolid", "meropenem", 
+  "meropenem_vaborbactam", "metronidazole", "piperacillin_tazobactam", 
+  "tedizolid", "telavancin", "tigecycline", "tobramycin", "vancomycin"
+)
 
-# load susceptibility data =====================================================
+##anaerobic antibacterials -----------------------------------------------------
 
-suscept_raw = 
-  data_list$microbiology_susceptibility |>
-  dplyr::filter(!is.na(susceptibility_category)) |>
-  dplyr::filter(!is.na(antimicrobial_category)) |>
-  dplyr::select(hospitalization_id, collect_dttm, result_dttm, organism_group, 
-                antimicrobial_category, susceptibility_category) |>
+anaerobic_abx <- c(
+  "metronidazole", "piperacillin_tazobactam", "tigecycline", "doripenem",
+  "eravacycline", "ertapenem", "imipenem", "imipenem_relebactam", "meropenem",
+  "meropenem_vaborbactam"
+)
+
+## all antibacterials ----------------------------------------------------------
+
+antibacterials = c(
+  broad_spectrum_abx,
+  "amoxicillin", "amoxicillin_clavulanate", "ampicillin", "ampicillin_sulbactam",
+  "azithromycin", "cefaclor", "cefadroxil", "cefamandole", "cefazolin", "cefdinir",
+  "cefixime", "cefmetazole", "cefonicid", "cefoperazone", "cefotaxime", "cefotetan",
+  "cefoxitin", "cefpodoxime", "cefprozil", "ceftibuten", "ceftizoxime", "ceftriaxone",
+  "cefuroxime", "cephalexin", "cephalothin", "cephapirin", "cephradine", "chloramphenicol",
+  "cinoxacin", "ciprofloxacin", "clarithromycin", "clindamycin", "cloxacillin",
+  "delafloxacin", "dicloxacillin", "doxycycline", "erythromycin",
+  "fosfomycin", "gatifloxacin", "kanamycin", "lefamulin", "levofloxacin", "lincomycin",
+  "methicillin", "mezlocillin", "minocycline", "moxifloxacin", "nafcillin",
+  "nitrofurantoin", "norfloxacin", "ofloxacin", "omadacycline", "oritavancin",
+  "oxacillin", "penicillin", "pivampicillin", "plazomicin", "polymyxin_b",
+  "quinupristin_dalfopristin", "rifampin", "streptomycin", "sulbactam_durlobactam",
+  "sulfadiazine", "sulfadiazine_trimethoprim", "sulfisoxazole", "telithromycin",
+  "tetracycline", "ticarcillin", "ticarcillin_clavulanate", "trimethoprim",
+  "trimethoprim_sulfamethoxazole"
+)
+
+## antifungals -----------------------------------------------------------------
+
+antifungals = c(
+  "amphotericin_b", "anidulafungin", "caspofungin", "fluconazole", "isavuconazole",
+  "isavuconazonium", "itraconazole", "micafungin", "posaconazole", "rezafungin", "voriconazole"
+)
+
+## antivirals ------------------------------------------------------------------
+
+antivirals = c(
+  "acyclovir", "cidofovir", "foscarnet", "ganciclovir", "maribavir", "oseltamivir",
+  "peramivir", "ribavirin", "valacyclovir", "valganciclovir"
+)
+
+## prophylactic antimicrobials (PCP and bacterial ppx) -------------------------
+
+prophylactic_abx = c(
+  "ciprofloxacin", "levofloxacin", "moxifloxacin", "cefpodoxime",                                                 
+  "trimethoprim_sulfamethoxazole", "dapsone", "atovaquone"                                                   
+)
+
+# load antimicrobial administration data =======================================
+
+antimicrobials_raw = 
+  medintermittent |>
+  dplyr::filter(med_group == "CMS_sepsis_qualifying_antibiotics") |>
+  dplyr::filter(admin_dttm >= start_date) |>
+  dplyr::select(hospitalization_id, admin_dttm, med_category) |>
   dplyr::collect()
 
-suscept = 
-  join(suscept_raw, cohort_72h_infection, on = "hospitalization_id", how = "inner", multiple = TRUE) |>
-  fselect(patient_id, collect_dttm, result_dttm, organism_group, antimicrobial_category, susceptibility_category) |>
+antimicrobials_raw = 
+  join(antimicrobials_raw, all_hid_crosswalk, on = "hospitalization_id", how = "inner", multiple = TRUE) |>
+  fselect(patient_id, admin_dttm, med_category) |>
   funique()
+
+antimicrobials_raw = 
+  join(antimicrobials_raw, anchor_df, on = "patient_id", how = "inner", multiple = TRUE) |>
+  fmutate(
+    med_class = case_when(
+      tolower(med_category) %in% antibacterials ~ "antibacterial",
+      tolower(med_category) %in% antifungals    ~ "antifungal",
+      tolower(med_category) %in% antivirals     ~ "antiviral",
+      TRUE                                      ~ "other"
+    ),
+    is_broad_spectrum = as.integer(tolower(med_category) %in% broad_spectrum_abx),
+    is_prophylactic   = as.integer(tolower(med_category) %in% prophylactic_abx),
+    is_broad_anaerobe = as.integer(tolower(med_category) %in% anaerobic_abx)
+  ) |>
+  fsubset(med_class != "other")
+
+
+# baseline antimicrobials (24h before CAR-T) ===================================
+
+baseline_antimicrobials = 
+  fsubset(antimicrobials_raw, admin_dttm >= cart_t0 - dhours(24) & admin_dttm < cart_t0)
+
+##identify patients on any antimicrobial class before CAR-T -----------------------------
+
+baseline_by_class = 
+  fgroup_by(baseline_antimicrobials, patient_id, med_class) |>
+  fsummarize(
+    n_doses = fnobs(admin_dttm),
+    meds    = paste(unique(tolower(med_category)), collapse = "|")
+  ) |>
+  fungroup() |>
+  pivot_wider(
+    names_from   = med_class,
+    values_from  = c(n_doses, meds),
+    names_glue   = "baseline_{med_class}_{.value}"
+  )
+
+baseline_flags = 
+  baseline_by_class |>
+  fmutate(
+    baseline_antibacterial_01 = as.integer(!is.na(baseline_antibacterial_meds)),
+    baseline_antifungal_01    = as.integer(!is.na(baseline_antifungal_meds)),
+    baseline_antiviral_01     = as.integer(!is.na(baseline_antiviral_meds))
+  )
+
+##flag if baseline antibacterial is broad-spectrum --------------------------------------
+
+baseline_broad =
+  baseline_antimicrobials |>
+  fgroup_by(patient_id) |>
+  fsummarize(baseline_broad_spectrum_01 = as.integer(any(med_class == "antibacterial" & is_broad_spectrum == 1L)),
+             baseline_anaerobe_01       = as.integer(any(med_class == "antibacterial" & is_broad_anaerobe == 1L))
+             ) |>
+  fungroup()
+
+baseline_flags = 
+  join(baseline_flags, baseline_broad, on = "patient_id", how = "left", multiple = FALSE) |>
+  fmutate(baseline_broad_spectrum_01 = replace_na(baseline_broad_spectrum_01, 0L),
+          baseline_anaerobe_01       = replace_na(baseline_anaerobe_01, 0L))
+
+##flag if baseline is likely prophylactic --------------------------------------------------
+
+baseline_ppx =
+  baseline_antimicrobials |>
+  fgroup_by(patient_id) |>
+  fsummarize(baseline_prophylactic_01 = as.integer(any(med_class == "antibacterial" & is_prophylactic == 1L))) |>
+  fungroup()
+
+baseline_flags = 
+  join(baseline_flags, baseline_ppx, on = "patient_id", how = "left", multiple = FALSE) |>
+  fmutate(baseline_prophylactic_01 = replace_na(baseline_prophylactic_01, 0L))
+
+rm(baseline_antimicrobials, baseline_by_class, baseline_broad, baseline_ppx)
+gc()
+
+# post-CAR-T antimicrobials (0-30 days) ========================================
+
+post_antibacterial =
+  antimicrobials_raw |>
+  dplyr::filter(admin_dttm >= cart_t0, admin_dttm <= cart_t0 + ddays(30)) |>
+  dplyr::filter(med_class == "antibacterial") |>
+  fmutate(
+    med_lc       = tolower(med_category),
+    h_since_cart = as.numeric(difftime(admin_dttm, cart_t0, units = "hours")),
+    d_since_cart = as.integer(floor(h_since_cart / 24))
+  )
+
+post_antiviral =
+  antimicrobials_raw |>
+  dplyr::filter(admin_dttm >= cart_t0, admin_dttm <= cart_t0 + ddays(30)) |>
+  dplyr::filter(med_class == "antiviral") |>
+  fmutate(
+    med_lc       = tolower(med_category),
+    h_since_cart = as.numeric(difftime(admin_dttm, cart_t0, units = "hours")),
+    d_since_cart = as.integer(floor(h_since_cart / 24))
+  )
+
+post_antifungal =
+  antimicrobials_raw |>
+  dplyr::filter(admin_dttm >= cart_t0, admin_dttm <= cart_t0 + ddays(30)) |>
+  dplyr::filter(med_class == "antifungal") |>
+  fmutate(
+    med_lc       = tolower(med_category),
+    h_since_cart = as.numeric(difftime(admin_dttm, cart_t0, units = "hours")),
+    d_since_cart = as.integer(floor(h_since_cart / 24))
+  )
+
+## identify NEW antimicrobials (different from baseline) -----------------------
+
+# create baseline medication lists per patient
+baseline_meds_by_patient =
+  baseline_flags |>
+  fselect(patient_id, baseline_antibacterial_meds) |>
+  fmutate(baseline_antibacterial_meds = tolower(replace_na(baseline_antibacterial_meds, "")))
+
+
+# flag new medications
+post_antibacterial_flag =
+  post_antibacterial |>
+  join(baseline_meds_by_patient, on = "patient_id", how = "left", multiple = FALSE) |>
+  fmutate(
+    baseline_antibacterial_meds = tolower(replace_na(baseline_antibacterial_meds, "")),
+    baseline_abx_list = strsplit(baseline_antibacterial_meds, "\\|"),
+    abx_in_baseline = mapply(function(m, lst) m %in% lst, med_lc, baseline_abx_list),
+    new_abx = as.integer(baseline_antibacterial_meds == "" | !abx_in_baseline),
+    abx_01 = as.integer(med_class == "antibacterial")
+    )
+
+##identify total days on antimicrobial----------------------------------
+
+abx_patient_day =
+  post_antibacterial_flag |>
+  dplyr::group_by(patient_id, d_since_cart) |>
+  dplyr::summarise(
+    broad_spectrum_01 = as.integer(any(is_broad_spectrum == 1L, na.rm = TRUE)),
+    prophylactic_01   = as.integer(any(is_prophylactic   == 1L, na.rm = TRUE)),
+    broad_anaerobe_01 = as.integer(any(is_broad_anaerobe == 1L, na.rm = TRUE)),
+    new_abx_01        = as.integer(any(new_abx           == 1L, na.rm = TRUE)),
+    abx_01            = as.integer(any(abx_01            == 1L, na.rm = TRUE)),
+    .groups = "drop"
+  )
+
+antiviral_patient_day =
+  post_antiviral |>
+  dplyr::group_by(patient_id, d_since_cart) |>
+  dplyr::summarise(
+    antiviral_01 = as.integer(any(med_class == "antiviral", na.rm = TRUE)),
+    .groups = "drop"
+  )
+
+antifungal_patient_day =
+  post_antifungal |>
+  dplyr::group_by(patient_id, d_since_cart) |>
+  dplyr::summarise(
+    antifungal_01 = as.integer(any(med_class == "antifungal", na.rm = TRUE)),
+    .groups = "drop"
+  )
+
+# Count days on broad spectrum abxs---------------------------------------------
+broad_spectrum_days <-
+  abx_patient_day |>
+  fsubset(broad_spectrum_01 == 1) |>
+  fgroup_by(patient_id) |>
+  fsummarize(broad_spectrum_days = fnobs(d_since_cart)) |>
+  fungroup()
+
+broad_anaerobe_days <-
+  abx_patient_day |>
+  fsubset(broad_anaerobe_01 == 1) |>
+  fgroup_by(patient_id) |>
+  fsummarize(broad_anaerobe_days = fnobs(d_since_cart)) |>
+  fungroup()
+
+df = join(df, broad_spectrum_days, on = "patient_id", how = "left", multiple = FALSE)
+df = join(df, broad_anaerobe_days, on = "patient_id", how = "left", multiple = FALSE)
+df$broad_spectrum_days = replace_na(df$broad_spectrum_days, 0L)
+df$broad_anaerobe_days = replace_na(df$broad_anaerobe_days, 0L)
+
+rm(broad_spectrum_days, broad_anaerobe_days)
+gc()
+
+##72 hour antimicrobial exposure------------------------------------------------
+
+abx_patient_day_72h =
+  abx_patient_day |>
+  dplyr::filter(d_since_cart >= 0, d_since_cart <= 2) |>
+  join(baseline_flags, on = "patient_id", how = "left", multiple = FALSE)
+
+abx_patient_day_72h =
+  abx_patient_day_72h |>
+  fmutate(
+    abx_escalation_01 = case_when(
+      new_abx_01 == 1 & baseline_broad_spectrum_01 == 0 & broad_spectrum_01 == 1 ~ 1L,
+      TRUE ~ 0L
+    ),
+    abx_deescalation_01 = case_when(
+      new_abx_01 == 1 & baseline_broad_spectrum_01 == 1 & broad_spectrum_01 == 0 ~ 1L,
+      TRUE ~ 0L))
+
+antiviral_patient_day_72h =
+  antiviral_patient_day |>
+  dplyr::filter(d_since_cart >= 0, d_since_cart <= 2) |>
+  join(baseline_flags, on = "patient_id", how = "left", multiple = FALSE)
+
+antifungal_patient_day_72h =
+  antifungal_patient_day |>
+  dplyr::filter(d_since_cart >= 0, d_since_cart <= 2) |>
+  join(baseline_flags, on = "patient_id", how = "left", multiple = FALSE)
+
+combined_antimicrobial_day_72h <- 
+  abx_patient_day_72h |>
+  dplyr::left_join(antiviral_patient_day_72h, by = c("patient_id", "d_since_cart"), relationship = "one-to-one") |>
+  dplyr::left_join(antifungal_patient_day_72h, by = c("patient_id", "d_since_cart"), relationship = "one-to-one") |>
+  dplyr::mutate(
+    dplyr::across(
+      c(antiviral_01, antifungal_01),
+      ~ tidyr::replace_na(.x, 0L)))
+
+
+##3-30 day antimicrobial exposure-----------------------------------------------
+
+abx_patient_day_3_30d =
+  abx_patient_day |>
+  dplyr::filter(d_since_cart >= 3, d_since_cart <= 30) |>
+  dplyr::select(-new_abx_01)
+
+antiviral_patient_day_3_30d =
+  antiviral_patient_day |>
+  dplyr::filter(d_since_cart >= 3, d_since_cart <= 30)
+
+antifungal_patient_day_3_30d =
+  antifungal_patient_day |>
+  dplyr::filter(d_since_cart >= 3, d_since_cart <= 30)
+
+combined_antimicrobial_day <- 
+  abx_patient_day_3_30d |>
+  dplyr::left_join(antiviral_patient_day_3_30d, by = c("patient_id", "d_since_cart"), relationship = "one-to-one") |>
+  dplyr::left_join(antifungal_patient_day_3_30d, by = c("patient_id", "d_since_cart"), relationship = "one-to-one") |>
+  dplyr::mutate(
+    dplyr::across(
+      c(antiviral_01, antifungal_01),
+      ~ tidyr::replace_na(.x, 0L)))
+
+rm(abx_patient_day, abx_patient_day_3_30d, abx_patient_day_72h, antifungal_patient_day, antifungal_patient_day_3_30d, 
+antifungal_patient_day_72h, antiviral_patient_day, antiviral_patient_day_3_30d, antiviral_patient_day_72h, post_antibacterial, 
+post_antifungal, post_antiviral)
+gc()
+
+# antimicrobial trends by trajectory ===========================================
+## daily antimicrobial flags by trajectory ---------------------------------
+
+antimicrobial_day_traj_72h = 
+  combined_antimicrobial_day_72h |>
+  join(fselect(df, patient_id, trajectory), on = "patient_id", how = "inner")
+
+antimicrobial_baseline_traj_summary <-
+  antimicrobial_day_traj_72h |>
+  fgroup_by(trajectory) |>
+  fsummarize(
+    n_patients_base_abx      = fsum(baseline_antibacterial_01,  na.rm = TRUE),
+    n_patients_base_broad    = fsum(baseline_broad_spectrum_01, na.rm = TRUE),
+    n_patients_base_anaerobe = fsum(baseline_anaerobe_01,       na.rm = TRUE),
+    n_patients_base_ppx      = fsum(baseline_prophylactic_01,   na.rm = TRUE),
+    n_patients_base_af       = fsum(baseline_antifungal_01,     na.rm = TRUE),
+    n_patients_base_av       = fsum(baseline_antiviral_01,      na.rm = TRUE)
+  ) |>
+  fungroup() |>
+  roworder(trajectory)
+
+antimicrobial_day_traj_72h_summary <-
+  antimicrobial_day_traj_72h |>
+  fgroup_by(trajectory, d_since_cart) |>
+  fsummarize(
+    n_patients_abx         = fsum(abx_01, na.rm = TRUE),
+    n_patients_broad       = fsum(broad_spectrum_01, na.rm = TRUE),
+    n_patients_anaerobe    = fsum(broad_anaerobe_01, na.rm = TRUE),
+    n_patients_ppx         = fsum(prophylactic_01, na.rm = TRUE),
+    n_patients_new_abx     = fsum(new_abx_01, na.rm = TRUE),
+  
+    n_patients_af          = fsum(antifungal_01, na.rm = TRUE),
+    n_patients_av          = fsum(antiviral_01, na.rm = TRUE),
+    n_patients_abx_esc     = fsum(abx_escalation_01, na.rm = TRUE),
+    n_patients_abx_de_esc  = fsum(abx_deescalation_01, na.rm = TRUE)) |>
+  fungroup() |>
+  roworder(trajectory, d_since_cart)
+
+antimicrobial_day_traj_3_30d = 
+  combined_antimicrobial_day |>
+  join(fselect(df, patient_id, trajectory), on = "patient_id", how = "inner")
+
+antimicrobial_day_traj_3_30d_summary <-
+  antimicrobial_day_traj_3_30d |>
+  fgroup_by(trajectory, d_since_cart) |>
+  fsummarize(
+    n_patients_abx = fsum(abx_01, na.rm = TRUE),
+    n_patients_af         = fsum(antifungal_01, na.rm = TRUE),
+    n_patients_av         = fsum(antiviral_01, na.rm = TRUE),
+    n_patients_broad      = fsum(broad_spectrum_01, na.rm = TRUE),
+    n_patients_anaerobe   = fsum(broad_anaerobe_01, na.rm = TRUE),
+    n_patients_ppx        = fsum(prophylactic_01, na.rm = TRUE)
+  ) |>
+  fungroup() |>
+  roworder(trajectory, d_since_cart)
+
+save_output(antimicrobial_baseline_traj_summary,  "antimicrobials_baseline_by_traj", shareable = TRUE, subfolder = "trajectory")
+save_output(antimicrobial_day_traj_72h_summary,   "antimicrobials_72h_by_traj",      shareable = TRUE, subfolder = "trajectory")
+save_output(antimicrobial_day_traj_3_30d_summary, "antimicrobials_3_30d_by_traj",    shareable = TRUE, subfolder = "trajectory")
+
+rm(antimicrobial_day_traj_3_30d, antimicrobial_day_traj_3_30d_summary, antimicrobial_day_traj_72h, antimicrobial_day_traj_72h_summary, 
+post_antibacterial_flag, combined_antimicrobial_day, combined_antimicrobial_day_72h)
+gc()
+
+
