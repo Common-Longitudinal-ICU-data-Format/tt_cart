@@ -546,7 +546,7 @@ prophylactic_abx = c(
 # load antimicrobial administration data =======================================
 
 antimicrobials_raw = 
-  medintermittent |>
+  data_list$medication_admin_intermittent |>
   dplyr::filter(med_group == "CMS_sepsis_qualifying_antibiotics") |>
   dplyr::filter(admin_dttm >= start_date) |>
   dplyr::select(hospitalization_id, admin_dttm, med_category) |>
