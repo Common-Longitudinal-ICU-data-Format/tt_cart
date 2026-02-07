@@ -56,8 +56,6 @@ exclude_results = c("not_detected", "indeterminate")
 
 ## Load culture data -----------------------------------------------------------
 
-microculture <- read_parquet("/Users/kml/Desktop/Test Files/clif_microbiology_culture.parquet")
-
 cultures = 
   microculture |>
   dplyr::filter(!is.na(collect_dttm)) |>
@@ -93,8 +91,6 @@ culture_3_30d <-
   roworder(collect_dttm)
 
 ## Load PCR data ---------------------------------------------------------------
-
-micrononculture <- read_parquet("/Users/kml/Desktop/Test Files/clif_microbiology_nonculture.parquet")
 
 pcr = 
   micrononculture |>
