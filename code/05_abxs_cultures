@@ -10,9 +10,7 @@
 if (!exists("df") || !exists("all_hid_crosswalk") || !exists("anchor_df") || !exists("save_output")) {
   stop("Run 00_setup.R through 04_outcomes.R first.", call. = FALSE)
 }
-
-
-# antibiotics and cultures =====================================================
+# Antibiotic exposure and infections ===========================================
 ## Organism classification -----------------------------------------------------
 
 viral_organisms = c(
@@ -57,7 +55,7 @@ exclude_results = c("not_detected", "indeterminate")
 ## Load culture data -----------------------------------------------------------
 
 cultures = 
-  microculture |>
+  data_list$microbiology_culture |>
   dplyr::filter(!is.na(collect_dttm)) |>
   dplyr::filter(!is.na(organism_group)) |>
   dplyr::filter(organism_group != "no_growth") |>
@@ -75,25 +73,10 @@ cultures =
     h_since_cart = as.numeric(difftime(collect_dttm, cart_t0, units = "hours")),
     d_since_cart = as.integer(floor(h_since_cart / 24)))
 
-culture_baseline <-
-  cultures|>
-  fsubset(collect_dttm >= cart_t0 - ddays(1) & collect_dttm <= cart_t0) |>
-  roworder(collect_dttm)
-
-culture_72h <-
-  cultures|>
-  fsubset(collect_dttm >= cart_t0 & collect_dttm <= cart_t0 + ddays(2)) |>
-  roworder(collect_dttm)
-
-culture_3_30d <-
-  cultures|>
-  fsubset(collect_dttm >= cart_t0 + ddays(3) & collect_dttm <= cart_t0 + ddays(30)) |>
-  roworder(collect_dttm)
-
 ## Load PCR data ---------------------------------------------------------------
 
 pcr = 
-  micrononculture |>
+  data_list$microbiology_nonculture |>
   dplyr::filter(!is.na(collect_dttm)) |>
   dplyr::filter(!is.na(organism_group)) |>
   dplyr::filter(organism_group != "no_growth") |>
@@ -112,37 +95,14 @@ pcr =
     h_since_cart = as.numeric(difftime(collect_dttm, cart_t0, units = "hours")),
     d_since_cart = as.integer(floor(h_since_cart / 24)))
 
-pcr_baseline <-
-  pcr|>
-  fsubset(collect_dttm >= cart_t0 - ddays(1) & collect_dttm <= cart_t0) |>
-  fmutate(organism_id = NA) |>
-  roworder(collect_dttm)
+infection <- dplyr::bind_rows(cultures, pcr)
 
-pcr_72h <-
-  pcr|>
-  fsubset(collect_dttm >= cart_t0 & collect_dttm <= cart_t0 + ddays(2)) |>
-  fmutate(organism_id = NA) |>
-  roworder(collect_dttm)
-
-pcr_3_30d <-
-  pcr|>
-  fsubset(collect_dttm >= cart_t0 + ddays(3) & collect_dttm <= cart_t0 + ddays(30)) |>
-  fmutate(organism_id = NA) |>
-  roworder(collect_dttm)
-
-## Combine cultures and PCR ----------------------------------------------------
-
-infection_base <- dplyr::bind_rows(culture_baseline, pcr_baseline)
-infection_72h <- dplyr::bind_rows(culture_72h, pcr_72h)
-infection_3_30d <- dplyr::bind_rows(culture_3_30d, pcr_3_30d)
-
-
-rm(cultures, culture_baseline, culture_72h, culture_3_30d, pcr, pcr_baseline, pcr_72h, pcr_3_30d)
+rm(cultures, pcr)
 gc()
     
 ##Classify organism type and infection location
 
-infection_base <- infection_base |>
+infection <- infection |>
   dplyr::mutate(
     organism_type = dplyr::case_when(
       tolower(organism_category) %in% viral_organisms  ~ "viral",
@@ -159,54 +119,14 @@ infection_base <- infection_base |>
                                      "skin_disseminated_multiple_sites", "central_nervous_system", 
                                      "brain", "meninges_csf", "spinal_cord","other_unspecified")        ~ "other",
                                      TRUE                                                               ~ "other"))
-
-infection_72h <- infection_72h |>
-  dplyr::mutate(
-    organism_type = dplyr::case_when(
-      tolower(organism_category) %in% viral_organisms  ~ "viral",
-      tolower(organism_category) %in% fungal_organisms ~ "fungal",
-      TRUE                                             ~ "bacterial"),
-    infection_source = dplyr::case_when(
-      tolower(fluid_category) %in% c("blood", "blood_buffy", "catheter_tip")                         ~ "blood",
-      tolower(fluid_category) %in% c("genito_urinary_tract", "kidneys_renal_pelvis_ureters_bladder") ~ "urine",
-      tolower(fluid_category) %in% c("resp", "respiratory_tract", "respiratory_tract_lower",
-                                     "nasopharynx_upperairway", "oropharynx_tongue_oralcavity")      ~ "respiratory",
-      tolower(fluid_category) %in% c("feces_stool", "gastrointestinal_tract", "stomach",
-                                     "small_intestine", "large_intestine", "woundsite", 
-                                     "skin_unspecified", "skin_rash_pustules_abscesses", 
-                                     "skin_disseminated_multiple_sites", "central_nervous_system", 
-                                     "brain", "meninges_csf", "spinal_cord","other_unspecified")        ~ "other",
-                                     TRUE                                                               ~ "other"))
-
-infection_3_30d <- infection_3_30d |>
-  dplyr::mutate(
-    organism_type = dplyr::case_when(
-      tolower(organism_category) %in% viral_organisms  ~ "viral",
-      tolower(organism_category) %in% fungal_organisms ~ "fungal",
-      TRUE                                             ~ "bacterial"),
-    infection_source = dplyr::case_when(
-      tolower(fluid_category) %in% c("blood", "blood_buffy", "catheter_tip")                         ~ "blood",
-      tolower(fluid_category) %in% c("genito_urinary_tract", "kidneys_renal_pelvis_ureters_bladder") ~ "urine",
-      tolower(fluid_category) %in% c("resp", "respiratory_tract", "respiratory_tract_lower",
-                                     "nasopharynx_upperairway", "oropharynx_tongue_oralcavity")      ~ "respiratory",
-      tolower(fluid_category) %in% c("feces_stool", "gastrointestinal_tract", "stomach",
-                                     "small_intestine", "large_intestine", "woundsite", 
-                                     "skin_unspecified", "skin_rash_pustules_abscesses", 
-                                     "skin_disseminated_multiple_sites", "central_nervous_system", 
-                                     "brain", "meninges_csf", "spinal_cord","other_unspecified")        ~ "other",
-                                     TRUE                                                               ~ "other")) 
-
+                                                            
 #Deduplicate infections
-infection_base <- infection_base |> 
-   dplyr::distinct(patient_id, d_since_cart, fluid_category, organism_category, .keep_all = TRUE)
-infection_72h <- infection_72h |> 
-   dplyr::distinct(patient_id, d_since_cart, fluid_category, organism_category, .keep_all = TRUE)
-infection_3_30d <- infection_3_30d |> 
-   dplyr::distinct(patient_id, d_since_cart, fluid_category, organism_category, .keep_all = TRUE)
+infection <- infection |> dplyr::distinct(patient_id, d_since_cart, fluid_category, organism_category, .keep_all = TRUE)
 
 #Create binary flags and join back to df
 infection_base_flags =
-  infection_base |>
+  infection |>
+  fsubset(collect_dttm >= cart_t0 - ddays(1) & collect_dttm <= cart_t0) |>
   fmutate(
     bacterial_base_01 = as.integer(organism_type == "bacterial"),
     viral_base_01     = as.integer(organism_type == "viral"),
@@ -222,7 +142,8 @@ infection_base_flags =
          other_inf_base_01)
 
 infection_72h_flags =
-  infection_72h |>
+  infection |>
+  fsubset(collect_dttm >= cart_t0 & collect_dttm <= cart_t0 + ddays(2)) |>
   fmutate(
     bacterial_72h_01 = as.integer(organism_type    == "bacterial"),
     viral_72h_01     = as.integer(organism_type    == "viral"),
@@ -249,7 +170,8 @@ infection_72h_flags =
           other_inf_72h_01)
 
 infection_3_30d_flags =
-  infection_3_30d |>
+  infection |>
+  fsubset(collect_dttm >= cart_t0 + ddays(3) & collect_dttm <= cart_t0 + ddays(30)) |>
   fmutate(
     bacterial_3_30d_01 = as.integer(organism_type    == "bacterial"),
     viral_3_30d_01     = as.integer(organism_type    == "viral"),
@@ -309,7 +231,7 @@ df$resp_3_30d_01              = replace_na(df$resp_3_30d_01, 0L)
 df$other_inf_3_30d_01         = replace_na(df$other_inf_3_30d_01, 0L)
 
 
-rm(infection_base, infection_base_flags, infection_72h, infection_72h_flags, infection_3_30d_flags)
+rm(infection_base_flags, infection_72h_flags, infection_3_30d_flags)
 gc()
 
 ## Infection summaries by trajectory =====================================================================
@@ -407,52 +329,53 @@ gc()
 
 ## Daily infection summaries by trajectory -----------------------------------
 #Overall prevalence of infection at 3-30 days by type and source
-infections_3_30d_bacterial_daily = 
-  infection_3_30d |>
-  fsubset(bacterial_3_30d_01 == 1) |>
-  fgroup_by(trajectory, bacterial_first_detection_d_3_30d) |>
-  fsummarize(n_patients_first_bacterial = fnobs(patient_id)) |>
-  fungroup() |>
-  frename(day = bacterial_first_detection_d_3_30d) |>
-  roworder(trajectory, day)
-
-infections_3_30d_viral_daily = 
-  df |>
-  fsubset(viral_3_30d_01 == 1) |>
-  fgroup_by(trajectory, viral_first_detection_d_3_30d) |>
-  fsummarize(n_patients_first_viral = fnobs(patient_id)) |>
-  fungroup() |>
-  frename(day = viral_first_detection_d_3_30d) |>
-  roworder(trajectory, day)
-
-infections_3_30d_fungal_daily = 
-  df |>
-  fsubset(fungal_3_30d_01 == 1) |>
-  fgroup_by(trajectory, fungal_first_detection_d_3_30d) |>
-  fsummarize(n_patients_first_fungal = fnobs(patient_id)) |>
-  fungroup() |>
-  frename(day = fungal_first_detection_d_3_30d) |>
-  roworder(trajectory, day)
-
-infections_3_30d_daily_combined = 
-  infections_3_30d_bacterial_daily |>
-  join(infections_3_30d_viral_daily, on = c("trajectory", "day"), how = "full", multiple = FALSE) |>
-  join(infections_3_30d_fungal_daily, on = c("trajectory", "day"), how = "full", multiple = FALSE) |>
-  fmutate(
-    n_patients_first_bacterial = replace_na(n_patients_first_bacterial, 0L),
-    n_patients_first_viral = replace_na(n_patients_first_viral, 0L),
-    n_patients_first_fungal = replace_na(n_patients_first_fungal, 0L)
+infection_bacterial_daily <-
+  infection |>
+  join(df |> fselect(patient_id, trajectory), on = "patient_id", how = "inner", multiple = FALSE) |>
+  fsubset(collect_dttm >= cart_t0 & collect_dttm <= cart_t0 + ddays(30)) |>
+  dplyr::filter(organism_type == "bacterial") |>
+  dplyr::group_by(trajectory, d_since_cart) |>
+  dplyr::summarise(
+    n_patients_bacterial_infection = dplyr::n_distinct(patient_id),
+    .groups = "drop"
   ) |>
-  roworder(trajectory, day)
-
-save_output(infections_3_30d_prevalence, "infections_3_30d_prevalence_by_trajectory", shareable = TRUE, subfolder = "trajectory")
-save_output(infections_3_30d_time_all, "infections_3_30d_time_all_by_trajectory", shareable = TRUE, subfolder = "trajectory")
-save_output(infections_3_30d_bacterial_daily, "infections_3_30d_bacterial_trajectory", shareable = TRUE, subfolder = "trajectory")
-save_output(infections_3_30d_viral_daily, "infections_3_30d_viral_trajectory", shareable = TRUE, subfolder = "trajectory")
-save_output(infections_3_30d_fungal_daily, "infections_3_30d_fungal_trajectory", shareable = TRUE, subfolder = "trajectory")
-save_output(infections_3_30d_daily_combined, "infections_3_30d_combined_trajectory", shareable = TRUE, subfolder = "trajectory")
+  dplyr::arrange(trajectory, d_since_cart)
 
 
+infection_viral_daily <-
+  infection |>
+  join(df |> fselect(patient_id, trajectory), on = "patient_id", how = "inner", multiple = FALSE) |>
+  fsubset(collect_dttm >= cart_t0 & collect_dttm <= cart_t0 + ddays(30)) |>
+  dplyr::filter(organism_type == "viral") |>
+  dplyr::group_by(trajectory, d_since_cart) |>
+  dplyr::summarise(
+    n_patients_viral_infection = dplyr::n_distinct(patient_id),
+    .groups = "drop"
+  ) |>
+  dplyr::arrange(trajectory, d_since_cart)
+
+infection_fungal_daily <-
+  infection |>
+  join(df |> fselect(patient_id, trajectory), on = "patient_id", how = "inner", multiple = FALSE) |>
+  fsubset(collect_dttm >= cart_t0 & collect_dttm <= cart_t0 + ddays(30)) |>
+  dplyr::filter(organism_type == "fungal") |>
+  dplyr::group_by(trajectory, d_since_cart) |>
+  dplyr::summarise(
+    n_patients_fungal_infection = dplyr::n_distinct(patient_id),
+    .groups = "drop"
+  ) |>
+  dplyr::arrange(trajectory, d_since_cart)
+
+infection_daily <-
+  join(infection_bacterial_daily, infection_viral_daily, on = c("trajectory", "d_since_cart"),
+       how = "left", multiple = FALSE) |>
+  join(infection_fungal_daily, on = c("trajectory", "d_since_cart"), how = "left", multiple = FALSE)
+
+save_output(infection_daily, "infection_daily_by_trajectory", shareable = TRUE, subfolder = "trajectory")
+
+
+rm(infection, infection_bacterial_daily, infection_viral_daily, infection_fungal_daily)
+gc()
 
 ##Antimicrobial exposure
 ## broad-spectrum antibacterials -----------------------------------------------
