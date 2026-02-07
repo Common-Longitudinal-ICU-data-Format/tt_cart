@@ -49,21 +49,15 @@ fungal_organisms = c(
   "mucormycosis_zygomycetes_rhizopus", "pneumocystis", "torulopsis_galbrata", "yeast"
 )
 
-# Exclude normal flora, no growth, parasites, unspecified organisms and negative/indeterminant pcr tests
-exclude_organisms = c(
-  "no_growth", "pharyngeal_respiratory_flora", "other_organism",
-  "amebiasis", "cryptosporidium", "echinoco_ocalcyst", "giardia",
-  "protozoal_other", "toxoplasma", "trichomonas")
-
 exclude_results = c("not_detected", "indeterminate")
 
 ## Load culture data -----------------------------------------------------------
 
 cultures = 
-  data_list$microbiology_culture |>
+  data.list$microbiology_culture |>
   dplyr::filter(!is.na(collect_dttm)) |>
   dplyr::filter(!is.na(organism_group)) |>
-  dplyr::filter(tolower(organism_group) %!in% exclude_organisms) |>
+  dplyr::filter(organism_group != "no_growth") |>
   dplyr::select(hospitalization_id, organism_id, collect_dttm, fluid_category, organism_group) |>
   dplyr::collect()
 
@@ -78,8 +72,6 @@ pcr =
   data_list$microbiology_nonculture |>
   dplyr::filter(tolower(method_category) == "pcr") |>
   dplyr::filter(!is.na(collect_dttm)) |>
-  dplyr::filter(!is.na(organism_group)) |>
-  dplyr::filter(tolower(organism_group) %!in% exclude_organisms) |>
   dplyr::filter(tolower(result_category) %!in% exclude_results) |>
   dplyr::select(hospitalization_id, collect_dttm, fluid_category, organism_group) |>
   dplyr::collect()
