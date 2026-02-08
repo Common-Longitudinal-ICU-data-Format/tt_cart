@@ -546,7 +546,7 @@ scores =
 
 df = join(df, scores, how = "left", multiple = FALSE)
 
-rm(thr_easix, thr_ferritin, thr_crp, easix_window, scores, labs_raw); gc()
+rm(thr_easix, thr_ferritin, thr_crp, easix_window, scores); gc()
 
 
 ## lab trends by day (for export)====================================================================
@@ -583,11 +583,11 @@ labs_trend_nadir_traj =
   fungroup() |>
   roworder(lab_category, trajectory, d_since_cart)
 
-### save for export (will be picked up in 06_export.R)
-labs_trend_mean_export = labs_trend_mean_traj
-labs_trend_nadir_export = labs_trend_nadir_traj
+##Export------------------------------------------------------------------------
+save_output(labs_trend_mean_traj,  "lab_trends_mean_by_trajectory",  shareable = TRUE, subfolder = "trajectory")
+save_output(labs_trend_nadir_traj, "lab_trends_nadir_by_trajectory", shareable = TRUE, subfolder = "trajectory")
 
-rm(labs_daily_mean, labs_trend_mean_traj, labs_raw, daily_nadirs, labs_trend_nadir_traj)
+rm(labs_daily_mean, labs_trend_mean_traj, labs_raw, daily_nadirs, labs_trend_nadir_traj, anc_daily, anc_complete)
 gc()
 
 
