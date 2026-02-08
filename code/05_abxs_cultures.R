@@ -766,7 +766,7 @@ post_antibacterial_flag, combined_antimicrobial_day, combined_antimicrobial_day_
 baseline_meds_by_patient, infection_fungal_daily, infection_bacterial_daily, infection_viral_daily)
 
 rm(anaerobic_abx, antibacterials, antifungals, antivirals, broad_spectrum_abx, lab_categories, 
-  prophylactic_abx, req_labs, req_vitals, required_tables, uln_alt, uln_ast, uln_bili, uln_cr, exclude_results)
+  prophylactic_abx, req_labs, req_vitals, required_tables, uln_alt, uln_ast, uln_bili, uln_cr, exclude_results, find_max_consecutive)
     
 gc()
 
