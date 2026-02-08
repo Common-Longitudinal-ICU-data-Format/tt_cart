@@ -882,11 +882,9 @@ gc()
 
 df = fselect(df, -discharge_category, -discharge_category_clean)
 
-save_output(labs_trend_mean_export, "lab_trends_mean_by_trajectory", shareable = TRUE, subfolder = "trajectory")
-save_output(labs_trend_nadir_export, "lab_trends_nadir_by_trajectory", shareable = TRUE, subfolder = "trajectory")
 save_output(meds_trend_by_traj, "meds_daily_by_trajectory", shareable = TRUE, subfolder = "trajectory")
 
-rm(labs_trend_mean_export,  labs_trend_nadir_export, meds_trend_by_traj)
+rm(meds_trend_by_traj)
 gc()
 
 message("04_outcomes.R complete.")
