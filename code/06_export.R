@@ -7,7 +7,7 @@
 # check dependencies ===========================================================
 
 if (!exists("df") || !exists("save_output")) {
-  stop("Run 00_setup.R through 05_easix.R first.", call. = FALSE)
+  stop("Run 00_setup.R through 05_abxs_cultures.R first.", call. = FALSE)
 }
 
 message("Starting 06_export.R")
