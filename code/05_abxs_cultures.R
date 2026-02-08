@@ -374,7 +374,7 @@ infection_daily <-
 save_output(infection_daily, "infection_daily_by_trajectory", shareable = TRUE, subfolder = "trajectory")
 
 
-rm(infection, infection_bacterial_daily, infection_viral_daily, infection_fungal_daily)
+rm(infection, infection_bacterial_daily, infection_viral_daily, infection_fungal_daily, fungal_organisms, viral_organisms)
 gc()
 
 ##Antimicrobial exposure
