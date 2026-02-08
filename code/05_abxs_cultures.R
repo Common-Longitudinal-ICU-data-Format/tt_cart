@@ -764,6 +764,10 @@ save_output(antimicrobial_day_traj_3_30d_summary, "antimicrobials_3_30d_by_traj"
 rm(antimicrobial_day_traj_3_30d, antimicrobial_day_traj_3_30d_summary, antimicrobial_day_traj_72h, antimicrobial_day_traj_72h_summary, 
 post_antibacterial_flag, combined_antimicrobial_day, combined_antimicrobial_day_72h, antimicrobials_raw, baseline_flags, 
 baseline_meds_by_patient, infection_fungal_daily, infection_bacterial_daily, infection_viral_daily)
+
+rm(anaerobic_abx, antibacterials, antifungals, antivirals, broad_spectrum_abx, lab_categories, 
+  prophylactic_abx, req_labs, req_vitals, required_tables, uln_alt, uln_ast, uln_bili, uln_cr, exclude_results)
+    
 gc()
 
 
