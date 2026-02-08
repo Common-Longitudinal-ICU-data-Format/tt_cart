@@ -289,7 +289,7 @@ df = fselect(df, -admin_localtime)
 
 # create anchor df for downstream joins ========================================
 
-anchor_df = fselect(df, patient_id, joined_hosp_id, cart_t0 = admin_dttm)
+anchor_df = fselect(df, patient_id, joined_hosp_id, cart_t0)
 
 # clean up =====================================================================
 
