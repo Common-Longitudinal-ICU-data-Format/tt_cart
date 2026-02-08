@@ -146,7 +146,7 @@ exclusions = rbind(
 
 # exclusion 1: < 24h in-hospital post-cart =====================================
 
-df$time_to_dc = as.numeric(difftime(df$discharge_dttm, df$admin_dttm), "hours")
+df$time_to_dc = as.numeric(difftime(df$discharge_dttm, df$cart_t0), "hours")
 
 short_stay    = fsubset(df, time_to_dc < 24)
 n_short_death = fnrow(fsubset(short_stay, discharge_category %in% c("expired", "hospice")))
@@ -198,7 +198,7 @@ temp =
   join(df, how = "inner") |>
   fsubset(recorded_dttm >= admission_dttm) |>
   fsubset(recorded_dttm <= discharge_dttm) |>
-  fselect(joined_hosp_id, patient_id, cart_t0 = admin_dttm, recorded_dttm, temp_c) |>
+  fselect(joined_hosp_id, patient_id, cart_t0, recorded_dttm, temp_c) |>
   funique()
 
 rm(all_c_hids, cart_pats)
