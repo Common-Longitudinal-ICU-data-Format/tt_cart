@@ -49,6 +49,8 @@ all_hid_crosswalk =
   dplyr::select(patient_id, hospitalization_id) |>
   dplyr::collect()
 
+rm(cart_hids, cart_pids)
+
 # ICU outcomes =================================================================
 
 ## ICU admission within 30 days ------------------------------------------------
