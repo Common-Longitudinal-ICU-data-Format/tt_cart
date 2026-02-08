@@ -762,7 +762,8 @@ save_output(antimicrobial_day_traj_72h_summary,   "antimicrobials_72h_by_traj", 
 save_output(antimicrobial_day_traj_3_30d_summary, "antimicrobials_3_30d_by_traj",    shareable = TRUE, subfolder = "trajectory")
 
 rm(antimicrobial_day_traj_3_30d, antimicrobial_day_traj_3_30d_summary, antimicrobial_day_traj_72h, antimicrobial_day_traj_72h_summary, 
-post_antibacterial_flag, combined_antimicrobial_day, combined_antimicrobial_day_72h)
+post_antibacterial_flag, combined_antimicrobial_day, combined_antimicrobial_day_72h, antimicrobials_raw, baseline_flags, 
+baseline_meds_by_patient, infection_fungal_daily, infection_bacterial_daily, infection_viral_daily)
 gc()
 
 
