@@ -482,9 +482,72 @@ df$hlh_01 = replace_na(df$hlh_01, 0L)
 rm(ferritin_hlh, hlh_eligible, hlh_final, icaht_calc)
 gc()
 
+## EASIX========================================================================
+# define thresholds-------------------------------------------------------------
+thr_easix    = 4.6
+thr_ferritin = 321L
+thr_crp      = 21L
+
+## Preinfusion EASIX------------------------------------------------------------
+
+easix_window = 
+  labs_raw |>
+  fsubset(lab_dttm >= cart_t0 - ddays(1)) |>
+  fsubset(lab_dttm <= cart_t0 + dhours(12)) |>
+  roworder(lab_dttm) |>
+  fgroup_by(patient_id, lab_category) |>
+  ffirst()
+
+# calculate scores =============================================================
+
+scores = 
+  fselect(easix_window, patient_id, lab_category, lab_value) |>
+  pivot_wider(names_from = lab_category, values_from = lab_value) |>
+  fmutate(
+    easix        = safe_div(creatinine*ldh, platelet_count),
+    m_easix      = safe_div(crp*ldh, platelet_count),
+    s_easix      = safe_div(ldh, platelet_count),
+    log2_easix   = safe_log2(easix),
+    log2_m_easix = safe_log2(m_easix),
+    log2_s_easix = safe_log2(s_easix),
+    easix_f_cat  = case_when(
+      !is.na(easix) & easix >  thr_easix                                                ~ "High",
+      !is.na(easix) & easix <= thr_easix & !is.na(ferritin) & ferritin > thr_ferritin  ~ "Intermediate",
+      !is.na(easix) & easix <= thr_easix & !is.na(ferritin) & ferritin <= thr_ferritin ~ "Low",
+      !is.na(easix) & easix <= thr_easix & is.na(ferritin)                             ~ NA_character_,
+      TRUE ~ NA_character_
+    ),
+    easix_fc_cat = case_when(
+      !is.na(ferritin) & ferritin > thr_ferritin                                      ~ "High",
+      !is.na(ferritin) & ferritin <= thr_ferritin & !is.na(easix) & easix > thr_easix ~ "Intermediate",
+      !is.na(ferritin) & ferritin <= thr_ferritin & !is.na(crp) & crp > thr_crp       ~ "Intermediate",
+      !is.na(ferritin) & ferritin <= thr_ferritin & !is.na(easix) & easix <= thr_easix & 
+        !is.na(crp) & crp <= thr_crp                                                  ~ "Low",
+      TRUE                                                                            ~ NA_character_
+    ),
+    easix_f_cat  = factor(easix_f_cat,  levels = c("Low", "Intermediate", "High"), ordered = TRUE),
+    easix_fc_cat = factor(easix_fc_cat, levels = c("Low", "Intermediate", "High"), ordered = TRUE)
+  ) |>
+  fselect(
+    patient_id,
+    s_easix,
+    easix, 
+    log2_easix,
+    m_easix,
+    log2_m_easix,
+    easix_f_cat, 
+    easix_fc_cat
+  ) |>
+  distinct()
+
+# add to df ------------------------------------------------------------------------------------------
+
+df = join(df, scores, how = "left", multiple = FALSE)
+
+rm(thr_easix, thr_ferritin, thr_crp, easix_window, scores, labs_raw); gc()
 
 
-## lab trends by day (for export) ----------------------------------------------
+## lab trends by day (for export)====================================================================
 
 labs_daily_mean = 
   fsubset(labs_raw, d_since_cart >= 0 & d_since_cart <= 30) |>
