@@ -21,11 +21,11 @@ df = df |>
   fmutate(
     # everyone observed until death or 12/31/24
     followup_end = fifelse(!is.na(death_dttm), death_dttm, as.POSIXct(data_end_date)),
-    followup_d   = as.numeric(difftime(followup_end, admin_dttm, units = "days")),
+    followup_d   = as.numeric(difftime(followup_end, cart_t0, units = "days")),
     died         = as.integer(!is.na(time_to_death)),
     
     # calendar year
-    infusion_year = year(admin_dttm),
+    infusion_year = year(cart_t0),
     
     # CAR-T target (CD19 vs BCMA)
     cart_target = case_when(
