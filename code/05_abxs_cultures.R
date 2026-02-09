@@ -320,9 +320,9 @@ infections_3_30d_prevalence =
 
 
 # Save summaries
-save_output(infections_base_prevalence, "infections_72h_prevalence_by_trajectory", shareable = TRUE, subfolder = "trajectory")
-save_output(infections_72h_prevalence, "infections_72h_time_by_trajectory", shareable = TRUE, subfolder = "trajectory")
-save_output(infections_3_30d_prevalence, "infections_72h_time_by_trajectory", shareable = TRUE, subfolder = "trajectory")
+save_output(infections_base_prevalence, "infections_base_by_trajectory", shareable = TRUE, subfolder = "trajectory")
+save_output(infections_72h_prevalence, "infections_72h_by_trajectory", shareable = TRUE, subfolder = "trajectory")
+save_output(infections_3_30d_prevalence, "infections_3_30d_by_trajectory", shareable = TRUE, subfolder = "trajectory")
 
 rm(infections_base_prevalence, infections_72h_prevalence, infections_3_30d_prevalence)
 gc()
