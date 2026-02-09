@@ -62,7 +62,7 @@ message("\n--- Trajectory Project Exports ---")
 ## continuous (including baseline labs) ----------------------------------------
 
 t1_cont_vars = c(
-  "age", "vw", "easix", "log2_easix", "wbc_infusion", "lymph_abs_infusion",
+  "age", "vw", "easix", "log2_easix",
   "baseline_ldh", "baseline_crp", "baseline_ferritin", 
   "baseline_wbc", "baseline_lymphocytes_absolute"
 )
