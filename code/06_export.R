@@ -62,10 +62,16 @@ message("\n--- Trajectory Project Exports ---")
 ## continuous (including baseline labs) ----------------------------------------
 
 t1_cont_vars = c(
-  "age", "vw", "easix", "log2_easix",
+  "age", "vw", "easix", "log2_easix", "s_easix", "m_easix", "log2_m_easix",
   "baseline_ldh", "baseline_crp", "baseline_ferritin", 
-  "baseline_wbc", "baseline_lymphocytes_absolute"
-)
+  "baseline_lymphocytes_absolute", "baseline_alt", "baseline_ast",
+  "baseline_bilirubin_total", "baseline_creatinine", "baseline_hemoglobin",
+  "baseline_neutrophils_absolute", "baseline_platelet_count",
+  "baseline_wbc", "baseline_lymphocytes_absolute", "hgb_nadir", "alc_nadir",
+  "anc_nadir", "plt_nadir", "baseline_steroid", "toci_n_doses_30d", "h_until_toci",
+  "anakinra_n_doses_30d", "h_until_anakinra", "steroid_days_30d", "apap_day_0",
+  "apap_day_1", "apap_day_2", "apap_cum_0_2", "broad_spectrum_days", 
+  "broad_anaerobe_days", "los_hospital_d")
 
 t1_continuous = 
   lapply(t1_cont_vars, \(v) {
