@@ -64,9 +64,8 @@ message("\n--- Trajectory Project Exports ---")
 t1_cont_vars = c(
   "age", "vw", "easix", "log2_easix", "s_easix", "m_easix", "log2_m_easix",
   "baseline_ldh", "baseline_crp", "baseline_ferritin", 
-  "baseline_lymphocytes_absolute", "baseline_alt", "baseline_ast",
-  "baseline_bilirubin_total", "baseline_creatinine", "baseline_hemoglobin",
-  "baseline_neutrophils_absolute", "baseline_platelet_count",
+  "baseline_alt", "baseline_ast", "baseline_bilirubin_total", "baseline_creatinine", 
+  "baseline_hemoglobin", "baseline_neutrophils_absolute", "baseline_platelet_count",
   "baseline_wbc", "baseline_lymphocytes_absolute", "hgb_nadir", "alc_nadir",
   "anc_nadir", "plt_nadir", "baseline_steroid", "toci_n_doses_30d", "h_until_toci",
   "anakinra_n_doses_30d", "h_until_anakinra", "steroid_days_30d", "apap_day_0",
@@ -96,9 +95,16 @@ save_output(t1_continuous, "table1_continuous", shareable = TRUE, subfolder = "t
 ## categorical -----------------------------------------------------------------
 
 t1_cat_vars = c(
-  "sex_category", "race_eth", "cancer_cat", "cart_target", 
-  "easix_fc_cat", "hct_01", "infusion_year"
-)
+  "sex_category", "race_eth", "dx_broad_final", "cart_target", "infusion_year",
+  "hct_01", "bacterial_base_01", "viral_base_01", "fungal_base_01", "infection_base_01",
+  "blood_base_01", "urine_base_01", "resp_base_01", "other_inf_base_01", "bacterial_72h_01",
+  "viral_72h_01", "fungal_72h_01", "infection_72h_01", "blood_72h_01", "urine_72h_01",
+  "resp_72h_01", "other_inf_72h_01", "bacterial_3_30d_01", "viral_3_30d_01", "fungal_3_30d_01",
+  "infection_3_30d_01", "blood_3_30d_01", "urine_3_30d_01", "resp_3_30d_01", "other_inf_3_30d_01",
+  "dead_30_01", "dead_90_01", "dead_180_01", "dead_365_01", "icu_30_01", "imv_30_01", "va_30_01",
+  "resp_30_01", "icaht_grade", "severe_icaht_01", "neutropenia_grade", "anemia_grade",
+  "thrombocytopenia_grade", "hlh_01", "easix_f_cat", "easix_fc_cat", "steroid_any_72h",
+  "toci_any_30d", "anakinra_any_30d", "miss_vw")
 
 t1_categorical = 
   lapply(t1_cat_vars, \(v) {
