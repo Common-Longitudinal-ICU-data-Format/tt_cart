@@ -66,11 +66,7 @@ t1_cont_vars = c(
   "baseline_ldh", "baseline_crp", "baseline_ferritin", 
   "baseline_alt", "baseline_ast", "baseline_bilirubin_total", "baseline_creatinine", 
   "baseline_hemoglobin", "baseline_neutrophils_absolute", "baseline_platelet_count",
-  "baseline_wbc", "baseline_lymphocytes_absolute", "hgb_nadir", "alc_nadir",
-  "anc_nadir", "plt_nadir", "baseline_steroid", "toci_n_doses_30d", "h_until_toci",
-  "anakinra_n_doses_30d", "h_until_anakinra", "steroid_days_30d", "apap_day_0",
-  "apap_day_1", "apap_day_2", "apap_cum_0_2", "broad_spectrum_days", 
-  "broad_anaerobe_days", "los_hospital_d")
+  "baseline_wbc", "baseline_lymphocytes_absolute")
 
 t1_continuous = 
   lapply(t1_cont_vars, \(v) {
@@ -96,15 +92,8 @@ save_output(t1_continuous, "table1_continuous", shareable = TRUE, subfolder = "t
 
 t1_cat_vars = c(
   "sex_category", "race_eth", "dx_broad_final", "cart_target", "infusion_year",
-  "hct_01", "bacterial_base_01", "viral_base_01", "fungal_base_01", "infection_base_01",
-  "blood_base_01", "urine_base_01", "resp_base_01", "other_inf_base_01", "bacterial_72h_01",
-  "viral_72h_01", "fungal_72h_01", "infection_72h_01", "blood_72h_01", "urine_72h_01",
-  "resp_72h_01", "other_inf_72h_01", "bacterial_3_30d_01", "viral_3_30d_01", "fungal_3_30d_01",
-  "infection_3_30d_01", "blood_3_30d_01", "urine_3_30d_01", "resp_3_30d_01", "other_inf_3_30d_01",
-  "dead_30_01", "dead_90_01", "dead_180_01", "dead_365_01", "icu_30_01", "imv_30_01", "va_30_01",
-  "resp_30_01", "icaht_grade", "severe_icaht_01", "neutropenia_grade", "anemia_grade",
-  "thrombocytopenia_grade", "hlh_01", "easix_f_cat", "easix_fc_cat", "steroid_any_72h",
-  "toci_any_30d", "anakinra_any_30d", "miss_vw")
+  "hct_01", "dead_30_01", "dead_90_01", "dead_180_01", "dead_365_01", "easix_f_cat", 
+  "easix_fc_cat", "miss_vw")
 
 t1_categorical = 
   lapply(t1_cat_vars, \(v) {
@@ -144,13 +133,11 @@ surv_data =
 
 save_output(surv_data, "survival_data_q30d", shareable = TRUE, subfolder = "trajectory")
 
-## acute outcomes --------------------------------------------------------------
+## ICU, binary medication, and complication outcomes ------------------------------------------
 
 acute_vars = c(
-  "icu_30_01", "imv_30_01", "va_30_01", "bsi_30_01", "abx_30_01",
-  "toci_any_30d", "anakinra_any_30d", "steroid_any_72h",
-  "severe_icaht_01", "hyperferritin_5k_01", "hyperferritin_10k_01"
-)
+  "icu_30_01", "imv_30_01", "resp_30_01", "va_30_01",
+  "toci_any_30d", "anakinra_any_30d", "steroid_any_72h", "severe_icaht_01", "hlh_01")
 
 acute_summary = 
   lapply(acute_vars, \(v) {
@@ -159,7 +146,10 @@ acute_summary =
     fselect(df, trajectory) |>
       fmutate(x = x) |>
       fgroup_by(trajectory) |>
-      fsummarize(n = fnobs(x), n_events = fsum(x, na.rm = TRUE)) |>
+      fsummarize(
+        n = fnobs(x), 
+        n_miss   = fsum(is.na(x)),
+        n_events = fsum(x, na.rm = TRUE)) |>
       fungroup() |>
       fmutate(variable = v)
   }) |>
@@ -167,12 +157,45 @@ acute_summary =
 
 save_output(acute_summary, "table2_acute", shareable = TRUE, subfolder = "trajectory")
 
+## med dosing and counts outcomes --------------------------------------------------------------
+med_outcome_vars <- c(
+  "baseline_steroid", "toci_n_doses_30d", "anakinra_n_doses_30d", "steroid_days_30d",
+  "apap_day_0", "apap_day_1", "apap_day_2", "apap_cum_0_2", "broad_spectrum_days",
+  "broad_anaerobe_days")
+
+med_outcomes_summary <-
+  lapply(med_outcome_vars, \(v) {
+    if (!v %in% names(df)) return(NULL)
+    x <- df[[v]]
+
+    fselect(df, trajectory) |>
+      fmutate(
+        x = x,
+        x_sq = x^2,
+        any_x = as.integer(!is.na(x) & x > 0)
+      ) |>
+      fgroup_by(trajectory) |>
+      fsummarize(
+        n        = fnobs(x),
+        n_miss   = fsum(is.na(x)),
+        sum_x    = fsum(x, na.rm = TRUE),
+        sum_x_sq = fsum(x_sq, na.rm = TRUE),
+        n_any    = fsum(any_x, na.rm = TRUE)
+      ) |>
+      fungroup() |>
+      fmutate(variable = v)
+  }) |>
+  rbindlist()
+
+save_output(med_outcomes_summary, "table2_medication_outcomes", shareable = TRUE, subfolder = "trajectory")
+
+
 ## hematotoxicity detail -------------------------------------------------------
 
-hematox_vars = c("anc_nadir", "plt_nadir", "hgb_nadir", "ferritin_max_30d")
+nadir_vars = c("anc_nadir", "plt_nadir", "hgb_nadir", "alc_nadir")
 
-hematox_summary = 
-  lapply(hematox_vars, \(v) {
+nadir_summary = 
+  lapply(nadir_vars, \(v) {
     if (!v %in% names(df)) return(NULL)
     x = df[[v]]
     fselect(df, trajectory) |>
@@ -180,6 +203,7 @@ hematox_summary =
       fgroup_by(trajectory) |>
       fsummarize(
         n        = fnobs(x), 
+        n_miss   = fsum(is.na(x)),
         sum_x    = fsum(x, na.rm = TRUE), 
         sum_x_sq = fsum(x_sq, na.rm = TRUE)
       ) |>
@@ -188,17 +212,31 @@ hematox_summary =
   }) |>
   rbindlist()
 
-save_output(hematox_summary, "table2_hematox", shareable = TRUE, subfolder = "trajectory")
+save_output(nadir_summary, "table2_nadir", shareable = TRUE, subfolder = "trajectory")
 
-## ICAHT grade distribution ----------------------------------------------------
+## ICAHT, CTCAE grade distribution ----------------------------------------------------
 
-icaht_dist = 
-  tidytable(trajectory = df$trajectory, icaht_grade = as.character(df$icaht_grade)) |>
-  fgroup_by(trajectory, icaht_grade) |>
-  fsummarize(n = fnobs(trajectory)) |>
-  fungroup()
+grade_vars <- c(
+  "icaht_grade",
+  "neutropenia_grade",
+  "anemia_grade",
+  "thrombocytopenia_grade")
 
-save_output(icaht_dist, "table2_icaht_grades", shareable = TRUE, subfolder = "trajectory")
+grade_dist <-
+  lapply(grade_vars, function(v) {
+    if (!v %in% names(df)) return(NULL)
+    
+    tidytable(
+      trajectory = df$trajectory,
+      grade = as.character(df[[v]])) |>
+      fgroup_by(trajectory, grade) |>
+      fsummarize(n = fnobs(trajectory)) |>
+      fungroup() |>
+      fmutate(grade_var = v)}) |>
+  rbindlist() |>
+  roworder(grade_var, trajectory, grade)
+
+save_output(grade_dist, "table2_grade_distributions", shareable=TRUE, subfolder="trajectory")
 
 ## time-to-event / LOS ---------------------------------------------------------
 
@@ -213,6 +251,7 @@ time_summary =
       fgroup_by(trajectory) |>
       fsummarize(
         n        = fnobs(x), 
+        n_miss   = fsum(is.na(x)),
         sum_x    = fsum(x, na.rm = TRUE), 
         sum_x_sq = fsum(x_sq, na.rm = TRUE)
       ) |>
@@ -223,6 +262,36 @@ time_summary =
 
 save_output(time_summary, "table2_time", shareable = TRUE, subfolder = "trajectory")
 
+## Infection outcomes--------------------------------------------------------------------
+
+infection_vars <- c(
+  "bacterial_base_01", "viral_base_01", "fungal_base_01", "infection_base_01",
+  "blood_base_01", "urine_base_01", "resp_base_01", "other_inf_base_01",
+  "bacterial_72h_01", "viral_72h_01", "fungal_72h_01", "infection_72h_01",
+  "blood_72h_01", "urine_72h_01", "resp_72h_01", "other_inf_72h_01",
+  "bacterial_3_30d_01", "viral_3_30d_01", "fungal_3_30d_01", "infection_3_30d_01",
+  "blood_3_30d_01", "urine_3_30d_01", "resp_3_30d_01", "other_inf_3_30d_01"
+)
+
+infection_outcomes_summary <-
+  lapply(infection_vars, \(v) {
+    if (!v %in% names(df)) return(NULL)
+    x <- df[[v]]
+
+    fselect(df, trajectory) |>
+      fmutate(x = x) |>
+      fgroup_by(trajectory) |>
+      fsummarize(
+        n        = fnobs(x),
+        n_miss   = fsum(is.na(x)),
+        n_events = fsum(x, na.rm = TRUE)
+      ) |>
+      fungroup() |>
+      fmutate(variable = v)
+  }) |>
+  rbindlist()
+
+save_output(infection_outcomes_summary, "table2_infection_outcomes", shareable = TRUE, subfolder = "trajectory")
 
 # RMST pseudo-observations =====================================================
 
