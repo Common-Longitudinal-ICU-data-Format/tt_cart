@@ -341,10 +341,10 @@ misclass =
     n               = fnobs(patient_id),
     dead_90_n       = fsum(dead_90_01, na.rm = TRUE),
     icu_30_n        = fsum(icu_30_01, na.rm = TRUE),
-    imv_30_n        = fsum(imv_30_01, na.rm = TRUE),
+    resp_30_n       = fsum(resp_30_01, na.rm = TRUE),
+    va_30_n         = fsum(va_30_01, na.rm = TRUE),
     toci_n          = fsum(toci_any_30d, na.rm = TRUE),
-    anakinra_n      = fsum(anakinra_any_30d, na.rm = TRUE),
-    hyperferr_10k_n = fsum(hyperferritin_10k_01, na.rm = TRUE)
+    anakinra_n      = fsum(anakinra_any_30d, na.rm = TRUE)
   ) |>
   fungroup()
 
