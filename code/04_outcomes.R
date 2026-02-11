@@ -345,6 +345,9 @@ ferritin_hlh =
   fungroup() |>
   fmutate(ferritin_10k_01 = as.integer(ferritin_max_30d >= 10000))
 
+df = join(df, ferritin_hlh |> fselect(patient_id, ferritin_max_30d),
+  on = "patient_id", how = "left", multiple = FALSE)
+
 # Only evaluate HLH criteria for patients with ferritin >10,000
 hlh_eligible = fsubset(ferritin_hlh, ferritin_10k_01 == 1)$patient_id
 
