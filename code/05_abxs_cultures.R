@@ -231,6 +231,12 @@ df$resp_3_30d_01              = replace_na(df$resp_3_30d_01, 0L)
 df$other_inf_3_30d_01         = replace_na(df$other_inf_3_30d_01, 0L)
 
 
+df = df |>
+  fmutate(
+    infection_overall_01 = as.integer(
+      fcoalesce(infection_72h_01, 0L) == 1L |
+      fcoalesce(infection_3_30d_01, 0L) == 1L))
+
 rm(infection_base_flags, infection_72h_flags, infection_3_30d_flags)
 gc()
 
