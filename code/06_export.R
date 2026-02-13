@@ -319,7 +319,7 @@ if (requireNamespace("pseudo", quietly = TRUE)) {
   pseudo_export = fselect(df, 
     patient_id, trajectory, fit_flag,
     age, sex_category, race_eth, dc_broad_final, cart_target, 
-    vw, log2_m_easix, infusion_year,
+    vw, log2_m_easix, infusion_year, baseline_lymphocytes_absolute,
     cart_hour_precise,
     pseudo_rmst_365
   )
@@ -370,14 +370,14 @@ save_output(margin_dist, "sensitivity_margin", shareable = TRUE, subfolder = "tr
 model_vars = c(
   "patient_id", "trajectory", "fit_flag",
   "dead_30_01", "dead_90_01", "dead_180_01", "dead_365_01",
-  "icu_30_01", "imv_30_01", "va_30_01", "bsi_30_01",
+  "icu_30_01", "resp_30_01", "va_30_01", "infection_overall_01",
   "toci_any_30d", "anakinra_any_30d",
-  "severe_icaht_01", "hyperferritin_5k_01", "hyperferritin_10k_01",
+  "severe_icaht_01", "hlh_01",
   "followup_d", "died", "time_to_death",
-  "age", "sex_category", "race_eth", "cart_target", "vw", "easix_fc_cat", "infusion_year",
-  "cart_hour_precise", "cart_hour_floor"
+  "age", "sex_category", "race_eth", "dx_broad_final", "cart_target", "vw", "log2_m_easix", "infusion_year",
+  "baseline_lymphocytes_absolute", "hct_01", "cart_hour_precise", "cart_hour_floor"
 )
-
+                      
 model_vars_present = intersect(model_vars, names(df))
 model_data = fselect(df, model_vars_present)
 save_output(model_data, "model_data", shareable = FALSE)
@@ -397,7 +397,7 @@ site_summary = tidytable(
   n_cd19          = fsum(df$cart_target == "CD19", na.rm = TRUE),
   n_bcma          = fsum(df$cart_target == "BCMA", na.rm = TRUE),
   n_severe_icaht  = fsum(df$severe_icaht_01, na.rm = TRUE),
-  n_hyperferr_10k = fsum(df$hyperferritin_10k_01, na.rm = TRUE),
+  n_hlh           = fsum(df$hlh_01, na.rm = TRUE),
   date_min        = as.character(min(df$admin_dttm, na.rm = TRUE)),
   date_max        = as.character(max(df$admin_dttm, na.rm = TRUE))
 )
@@ -425,7 +425,7 @@ circ_by_hour =
     toci_n          = fsum(toci_any_30d, na.rm = TRUE),
     anakinra_n      = fsum(anakinra_any_30d, na.rm = TRUE),
     severe_icaht_n  = fsum(severe_icaht_01, na.rm = TRUE),
-    hyperferr_10k_n = fsum(hyperferritin_10k_01, na.rm = TRUE)
+    hlh_n           = fsum(hlh_01, na.rm = TRUE)
   ) |>
   fungroup()
 
