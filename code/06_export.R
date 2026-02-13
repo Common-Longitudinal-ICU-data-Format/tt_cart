@@ -315,24 +315,6 @@ if (requireNamespace("pseudo", quietly = TRUE)) {
   
   df$pseudo_rmst_365 = pseudo_vals
   
-  # patient-level data for local analysis only
-  pseudo_export = fselect(df, 
-    patient_id, trajectory, fit_flag,
-    age, sex_category, race_eth, dc_broad_final, cart_target, 
-    vw, log2_m_easix, infusion_year, baseline_lymphocytes_absolute,
-    cart_hour_precise,
-    pseudo_rmst_365
-  )
-  
-  save_output(pseudo_export, "rmst_pseudo_365", shareable = FALSE)
-  
-  message("Pseudo-observations saved to intermediate_output/ for use in 07/08 analysis scripts.")
-  
-} else {
-  message("Package 'pseudo' not installed - skipping RMST.")
-  message("Install with: install.packages('pseudo')")
-}
-
 
 # misclassification sensitivity ================================================
 
@@ -363,25 +345,6 @@ margin_dist =
   fungroup()
 
 save_output(margin_dist, "sensitivity_margin", shareable = TRUE, subfolder = "trajectory")
-
-
-# model data for local adjusted analysis =======================================
-
-model_vars = c(
-  "patient_id", "trajectory", "fit_flag",
-  "dead_30_01", "dead_90_01", "dead_180_01", "dead_365_01",
-  "icu_30_01", "resp_30_01", "va_30_01", "infection_overall_01",
-  "toci_any_30d", "anakinra_any_30d",
-  "severe_icaht_01", "hlh_01",
-  "followup_d", "died", "time_to_death",
-  "age", "sex_category", "race_eth", "dx_broad_final", "cart_target", "vw", "log2_m_easix", "infusion_year",
-  "baseline_lymphocytes_absolute", "hct_01", "cart_hour_precise", "cart_hour_floor"
-)
-                      
-model_vars_present = intersect(model_vars, names(df))
-model_data = fselect(df, model_vars_present)
-save_output(model_data, "model_data", shareable = FALSE)
-
 
 # site summary =================================================================
 
