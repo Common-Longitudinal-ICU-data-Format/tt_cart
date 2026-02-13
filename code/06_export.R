@@ -271,7 +271,7 @@ infection_vars <- c(
   "blood_72h_01", "urine_72h_01", "resp_72h_01", "other_inf_72h_01",
   "bacterial_3_30d_01", "viral_3_30d_01", "fungal_3_30d_01", "infection_3_30d_01",
   "blood_3_30d_01", "urine_3_30d_01", "resp_3_30d_01", "other_inf_3_30d_01",
-  "infection_overall_01")
+  "infection_overall_01", "abx_30_01")
 
 infection_outcomes_summary <-
   lapply(infection_vars, \(v) {
@@ -328,7 +328,8 @@ misclass =
     va_30_n         = fsum(va_30_01, na.rm = TRUE),
     toci_n          = fsum(toci_any_30d, na.rm = TRUE),
     anakinra_n      = fsum(anakinra_any_30d, na.rm = TRUE),
-    infection_n     = fsum(infection_overall_01, na.rm = TRUE)
+    infection_n     = fsum(infection_overall_01, na.rm = TRUE),
+    abx_30_n        = fsum(abx_30_01, na.rm = TRUE)
   ) |>
   fungroup()
 
@@ -368,6 +369,8 @@ site_summary = tidytable(
   n_va            = fsum(df$va_30_01, na.rm = TRUE),
   n_toci          = fsum(df$toci_any_30d, na.rm = TRUE),
   n_anakinra      = fsum(df$anakinra_any_30d, na.rm = TRUE),
+  n_infection     = fsum(df$infection_overall_01, na.rm = TRUE),
+  n_abx           = fsum(df$abx_30_01, na.rm = TRUE),
   date_min        = as.character(min(df$admin_dttm, na.rm = TRUE)),
   date_max        = as.character(max(df$admin_dttm, na.rm = TRUE))
 )
