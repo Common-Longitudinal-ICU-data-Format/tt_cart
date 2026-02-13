@@ -87,7 +87,7 @@ df$trajectory_f  = factor(df$trajectory, levels = c("NT", "HT", "HFR", "HSR"))
 df$sex_f         = factor(df$sex_category)
 df$race_eth_f    = factor(df$race_eth, levels = c("nhw", "other"))
 df$cart_target_f = factor(df$cart_target, levels = c("CD19", "BCMA"))
-df$easix_fc_f    = factor(df$easix_fc_cat)
+df$m_easix       = factor(df$log2_m_easix)
 df$year_f        = factor(df$infusion_year)
 
 ## early/late dichotomization --------------------------------------------------
@@ -202,7 +202,7 @@ write_artifact(t1_categorical, "table1", "categorical", site_lowercase)
 message("\n== Table 2 (early vs late) ==")
 
 t2_binary_vars = c("dead_30_01", "dead_90_01", "dead_365_01",
-                   "icu_30_01", "imv_30_01", "va_30_01", "bsi_30_01",
+                   "icu_30_01", "resp_30_01", "va_30_01", "infection_overall_01",
                    "toci_any_30d", "anakinra_any_30d")
 
 t2_binary = 
@@ -258,8 +258,8 @@ logistic_outcomes = list(
   list(name = "dead_90",   var = "dead_90_01"),
   list(name = "dead_365",  var = "dead_365_01"),
   list(name = "icu_30",    var = "icu_30_01"),
-  list(name = "imv_30",    var = "imv_30_01"),
-  list(name = "bsi_30",    var = "bsi_30_01"),
+  list(name = "resp_30",   var = "resp_30_01"),
+  list(name = "infection", var = "infection_overall_01"),
   list(name = "toci",      var = "toci_any_30d"),
   list(name = "anakinra",  var = "anakinra_any_30d")
 )
@@ -271,7 +271,7 @@ logistic_results = lapply(logistic_outcomes, \(o) {
   if (!o$var %in% names(df)) return(NULL)
   
   formula = as.formula(paste(
-    o$var, "~ cart_hour_precise + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f"
+    o$var, "~ cart_hour_precise + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f"
   ))
   
   model = tryCatch(glm(formula, data = df, family = binomial), error = function(e) NULL)
@@ -290,7 +290,7 @@ write_artifact(logistic_coefs, "models", "logistic_coefs", site_lowercase)
 if ("pseudo_rmst_365" %in% names(df)) {
   
   rmst_model = tryCatch({
-    lm(pseudo_rmst_365 ~ cart_hour_precise + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f,
+    lm(pseudo_rmst_365 ~ cart_hour_precise + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f,
        data = df)
   }, error = function(e) NULL)
   
@@ -325,12 +325,12 @@ mediation_logistic = lapply(mediation_outcomes, \(o) {
   
   # total effect (no trajectory)
   formula_total = as.formula(paste(
-    o$var, "~ cart_hour_precise + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f"
+    o$var, "~ cart_hour_precise + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f"
   ))
   
   # direct effect (with trajectory)
   formula_direct = as.formula(paste(
-    o$var, "~ cart_hour_precise + trajectory_f + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f"
+    o$var, "~ cart_hour_precise + trajectory_f + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f"
   ))
   
   model_total = tryCatch(glm(formula_total, data = df, family = binomial), error = function(e) NULL)
@@ -357,12 +357,12 @@ write_artifact(mediation_logistic_coefs, "mediation", "logistic_coefs", site_low
 if ("pseudo_rmst_365" %in% names(df)) {
   
   rmst_total = tryCatch({
-    lm(pseudo_rmst_365 ~ cart_hour_precise + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f,
+    lm(pseudo_rmst_365 ~ cart_hour_precise + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f,
        data = df)
   }, error = function(e) NULL)
   
   rmst_direct = tryCatch({
-    lm(pseudo_rmst_365 ~ cart_hour_precise + trajectory_f + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f,
+    lm(pseudo_rmst_365 ~ cart_hour_precise + trajectory_f + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f,
        data = df)
   }, error = function(e) NULL)
   
@@ -410,7 +410,7 @@ for (target in c("CD19", "BCMA")) {
     if (!o$var %in% names(df_sub)) return(NULL)
     
     formula = as.formula(paste(
-      o$var, "~ cart_hour_precise + age + sex_f + race_eth_f + vw + easix_fc_f + year_f"
+      o$var, "~ cart_hour_precise + age + sex_f + race_eth_f + vw + log2_m_easix + year_f"
     ))
     
     model = tryCatch(glm(formula, data = df_sub, family = binomial), error = function(e) NULL)
@@ -429,7 +429,7 @@ for (target in c("CD19", "BCMA")) {
   # RMST
   if ("pseudo_rmst_365" %in% names(df_sub)) {
     rmst_sub = tryCatch({
-      lm(pseudo_rmst_365 ~ cart_hour_precise + age + sex_f + race_eth_f + vw + easix_fc_f + year_f,
+      lm(pseudo_rmst_365 ~ cart_hour_precise + age + sex_f + race_eth_f + vw + log2_m_easix + year_f,
          data = df_sub)
     }, error = function(e) NULL)
     
@@ -466,7 +466,7 @@ for (sex in c("male", "female")) {
     if (!o$var %in% names(df_sub)) return(NULL)
     
     formula = as.formula(paste(
-      o$var, "~ cart_hour_precise + age + race_eth_f + cart_target_f + vw + easix_fc_f + year_f"
+      o$var, "~ cart_hour_precise + age + race_eth_f + cart_target_f + vw + log2_m_easix + year_f"
     ))
     
     model = tryCatch(glm(formula, data = df_sub, family = binomial), error = function(e) NULL)
@@ -518,7 +518,7 @@ cutpoint_results = lapply(cutpoints, \(cp) {
   
   # 90-day mortality
   model = tryCatch({
-    glm(dead_90_01 ~ early_cp + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f,
+    glm(dead_90_01 ~ early_cp + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f,
         data = df, family = binomial)
   }, error = function(e) NULL)
   
@@ -561,12 +561,12 @@ mediation_collapsed_logistic = lapply(mediation_outcomes, \(o) {
   
   # total effect (no trajectory) - same as before
   formula_total = as.formula(paste(
-    o$var, "~ cart_hour_precise + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f"
+    o$var, "~ cart_hour_precise + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f"
   ))
   
   # direct effect with COLLAPSED trajectory
   formula_direct = as.formula(paste(
-    o$var, "~ cart_hour_precise + trajectory_collapsed_f + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f"
+    o$var, "~ cart_hour_precise + trajectory_collapsed_f + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f"
   ))
   
   model_total = tryCatch(glm(formula_total, data = df, family = binomial), error = function(e) NULL)
@@ -600,12 +600,12 @@ write_artifact(mediation_collapsed_coefs, "sensitivity", "logistic_coefs", site_
 if ("pseudo_rmst_365" %in% names(df)) {
   
   rmst_total = tryCatch({
-    lm(pseudo_rmst_365 ~ cart_hour_precise + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f,
+    lm(pseudo_rmst_365 ~ cart_hour_precise + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f,
        data = df)
   }, error = function(e) NULL)
   
   rmst_direct_collapsed = tryCatch({
-    lm(pseudo_rmst_365 ~ cart_hour_precise + trajectory_collapsed_f + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f,
+    lm(pseudo_rmst_365 ~ cart_hour_precise + trajectory_collapsed_f + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f,
        data = df)
   }, error = function(e) NULL)
   
