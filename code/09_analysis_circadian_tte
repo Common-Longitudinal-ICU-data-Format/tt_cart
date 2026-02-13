@@ -28,13 +28,6 @@ if (length(missing) > 0) {
        "\nEnsure day_of_week_f is computed in 06_export.R")
 }
 
-# create factors if not already ================================================
-
-if (!is.factor(df$sex_category))  df$sex_f         = factor(df$sex_category)
-if (!is.factor(df$race_eth))      df$race_eth_f    = factor(df$race_eth, levels = c("nhw", "other"))
-if (!is.factor(df$cart_target))   df$cart_target_f  = factor(df$cart_target, levels = c("CD19", "BCMA"))
-if (!is.factor(df$easix_fc_cat))  df$easix_fc_f    = factor(df$easix_fc_cat)
-if (!is.factor(df$infusion_year)) df$year_f        = factor(df$infusion_year)
 
 # early/late binary outcome ====================================================
 
