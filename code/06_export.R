@@ -240,7 +240,7 @@ save_output(grade_dist, "table2_grade_distributions", shareable=TRUE, subfolder=
 
 ## time-to-event / LOS ---------------------------------------------------------
 
-time_vars = c("los_hospital_d", "h_until_toci", "h_until_anakinra", "h_until_steroids")
+time_vars = c("los_hospital_d", "h_until_toci", "h_until_anakinra")
 
 time_summary = 
   lapply(time_vars, \(v) {
