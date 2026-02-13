@@ -318,7 +318,8 @@ if (requireNamespace("pseudo", quietly = TRUE)) {
   # patient-level data for local analysis only
   pseudo_export = fselect(df, 
     patient_id, trajectory, fit_flag,
-    age, sex_category, race_eth, dc_broad_final, cart_target, vw, easix_fc_cat, infusion_year,
+    age, sex_category, race_eth, dc_broad_final, cart_target, 
+    vw, log2_m_easix, infusion_year,
     cart_hour_precise,
     pseudo_rmst_365
   )
