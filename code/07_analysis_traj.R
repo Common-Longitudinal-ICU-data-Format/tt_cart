@@ -124,7 +124,7 @@ logistic_results = lapply(logistic_outcomes, \(o) {
   if (!o$var %in% names(df)) return(NULL)
   
   formula = as.formula(paste(
-    o$var, "~ trajectory_f + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f"
+    o$var, "~ trajectory_f + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f + baseline_lymphocytes_absolute"
   ))
   
   model = tryCatch(glm(formula, data = df, family = binomial), error = function(e) NULL)
@@ -143,7 +143,7 @@ write_artifact(logistic_coefs, "models", "logistic_coefs", site_lowercase)
 if ("pseudo_rmst_365" %in% names(df)) {
   
   rmst_model = tryCatch({
-    lm(pseudo_rmst_365 ~ trajectory_f + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f,
+    lm(pseudo_rmst_365 ~ trajectory_f + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f + baseline_lymphocytes_absolute,
        data = df)
   }, error = function(e) NULL)
   
