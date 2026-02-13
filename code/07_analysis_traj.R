@@ -86,7 +86,6 @@ df$trajectory_f  = factor(df$trajectory, levels = c("NT", "HT", "HFR", "HSR"))
 df$sex_f         = factor(df$sex_category)
 df$race_eth_f    = factor(df$race_eth, levels = c("nhw", "other"))
 df$cart_target_f = factor(df$cart_target, levels = c("CD19", "BCMA"))
-df$easix_fc_f    = factor(df$easix_fc_cat)
 df$year_f        = factor(df$infusion_year)
 
 ## sensitivity: reassign borderline to second_best -----------------------------
