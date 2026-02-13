@@ -101,47 +101,6 @@ message("  N = ", fnrow(df))
 message("  Borderline fits: ", fsum(df$fit_flag == "borderline", na.rm = TRUE))
 
 # ==============================================================================
-# DIAGNOSTICS
-# ==============================================================================
-
-message("\n== Diagnostics ==")
-
-diag_overall = tidytable(
-  site        = site_lowercase,
-  n_total     = fnrow(df),
-  n_cd19      = fsum(df$cart_target == "CD19", na.rm = TRUE),
-  n_bcma      = fsum(df$cart_target == "BCMA", na.rm = TRUE),
-  n_dead_90   = fsum(df$dead_90_01, na.rm = TRUE),
-  n_dead_365  = fsum(df$dead_365_01, na.rm = TRUE),
-  n_icu       = fsum(df$icu_30_01, na.rm = TRUE),
-  n_imv       = fsum(df$imv_30_01, na.rm = TRUE),
-  n_toci      = fsum(df$toci_any_30d, na.rm = TRUE),
-  n_anakinra  = fsum(df$anakinra_any_30d, na.rm = TRUE),
-  rate_dead_90 = fmean(df$dead_90_01, na.rm = TRUE),
-  n_borderline = fsum(df$fit_flag == "borderline", na.rm = TRUE)
-)
-
-write_artifact(diag_overall, "diagnostics", "overall", site_lowercase)
-
-diag_by_traj = 
-  fgroup_by(df, trajectory) |>
-  fsummarize(
-    n           = fnobs(patient_id),
-    n_dead_90   = fsum(dead_90_01, na.rm = TRUE),
-    n_dead_365  = fsum(dead_365_01, na.rm = TRUE),
-    n_icu       = fsum(icu_30_01, na.rm = TRUE),
-    n_toci      = fsum(toci_any_30d, na.rm = TRUE),
-    n_anakinra  = fsum(anakinra_any_30d, na.rm = TRUE),
-    rate_dead_90 = fmean(dead_90_01, na.rm = TRUE)
-  ) |>
-  fungroup()
-
-diag_by_traj$site = site_lowercase
-
-write_artifact(diag_by_traj, "diagnostics", "by_trajectory", site_lowercase)
-
-
-# ==============================================================================
 # MAIN MODELS: TRAJECTORY → OUTCOMES
 # ==============================================================================
 
@@ -150,14 +109,14 @@ message("\n== Main models ==")
 ## logistic regression for binary outcomes -------------------------------------
 
 logistic_outcomes = list(
-  list(name = "dead_90",   var = "dead_90_01"),
-  list(name = "dead_365",  var = "dead_365_01"),
-  list(name = "icu_30",    var = "icu_30_01"),
-  list(name = "imv_30",    var = "imv_30_01"),
-  list(name = "va_30",     var = "va_30_01"),
-  list(name = "bsi_30",    var = "bsi_30_01"),
-  list(name = "toci",      var = "toci_any_30d"),
-  list(name = "anakinra",  var = "anakinra_any_30d")
+  list(name = "dead_90",         var = "dead_90_01"),
+  list(name = "dead_365",        var = "dead_365_01"),
+  list(name = "icu_30",          var = "icu_30_01"),
+  list(name = "resp_30",         var = "resp_30_01"),
+  list(name = "va_30",           var = "va_30_01"),
+  list(name = "infection_30",    var = "infection_overall_01"),
+  list(name = "toci",            var = "toci_any_30d"),
+  list(name = "anakinra",        var = "anakinra_any_30d")
 )
 
 logistic_results = lapply(logistic_outcomes, \(o) {
@@ -165,7 +124,7 @@ logistic_results = lapply(logistic_outcomes, \(o) {
   if (!o$var %in% names(df)) return(NULL)
   
   formula = as.formula(paste(
-    o$var, "~ trajectory_f + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f"
+    o$var, "~ trajectory_f + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f"
   ))
   
   model = tryCatch(glm(formula, data = df, family = binomial), error = function(e) NULL)
