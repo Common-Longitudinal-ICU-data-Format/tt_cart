@@ -16,11 +16,11 @@ message("Starting 09_treatment_assignment.R")
 
 message("\n== Model 1: Logistic (early vs late) ==")
 
-## 1a. Core clinical + temporal predictors -------------------------------------
+df$early_01 = as.integer(df$early_late == "early")
 
 logistic_core = tryCatch({
   glm(early_01 ~ age + sex_f + race_eth_f + cart_target_f + vw + 
-        easix_fc_f + year_f + day_of_week_f,
+        log2_m_easix + cancer_cat + year_f + hct_01,
       data = df, family = binomial)
 }, error = function(e) { message("  Core model failed: ", e$message); NULL })
 
@@ -33,50 +33,15 @@ if (!is.null(logistic_core)) {
   message("  Pseudo-R²: ", round(1 - logistic_core$deviance / logistic_core$null.deviance, 4))
 }
 
-## 1b. Extended model (add baseline labs, steroids, infection) -----------------
-
-# Build formula dynamically based on available variables
-extended_terms = c("age", "sex_f", "race_eth_f", "cart_target_f", "vw",
-                   "easix_fc_f", "year_f", "day_of_week_f")
-
-# Add optional terms if they exist
-optional_terms = c("hct_01", "baseline_steroid", "baseline_crp", 
-                   "baseline_ferritin", "baseline_ldh",
-                   "infection_base_01", "baseline_antibacterial_01",
-                   "cancer_cat", "season_f")
-
-for (term in optional_terms) {
-  if (term %in% names(df) && sum(!is.na(df[[term]])) > 30) {
-    extended_terms = c(extended_terms, term)
-  }
-}
-
-formula_extended = as.formula(paste("early_01 ~", paste(extended_terms, collapse = " + ")))
-
-logistic_extended = tryCatch({
-  glm(formula_extended, data = df, family = binomial)
-}, error = function(e) { message("  Extended model failed: ", e$message); NULL })
-
-if (!is.null(logistic_extended)) {
-  coefs_extended = tidy(logistic_extended, exponentiate = TRUE, conf.int = TRUE) |>
-    as.data.table() |>
-    fmutate(model = "extended", site = site_lowercase)
-  
-  message("  Extended model AIC: ", round(AIC(logistic_extended), 1))
-  message("  Pseudo-R²: ", round(1 - logistic_extended$deviance / logistic_extended$null.deviance, 4))
-}
-
 # ==============================================================================
-# MODEL 2: LINEAR — What predicts continuous infusion hour?
+# MODEL 2: LINEAR — Do patient factors predict continuous infusion hour?
 # ==============================================================================
 
 message("\n== Model 2: Linear (continuous hour) ==")
 
-## 2a. Core model --------------------------------------------------------------
-
 linear_core = tryCatch({
-  lm(cart_hour_precise ~ age + sex_f + race_eth_f + cart_target_f + vw + 
-       easix_fc_f + year_f + day_of_week_f,
+  lm(cart_hour_precise ~ age + sex_f + race_eth_f + cart_target_f + vw +
+       log2_m_easix + hct_01 + cancer_cat + year_f,
      data = df)
 }, error = function(e) { message("  Core linear model failed: ", e$message); NULL })
 
@@ -90,41 +55,19 @@ if (!is.null(linear_core)) {
   message("  R²: ", round(r2, 4), " | Adj R²: ", round(adj_r2, 4))
 }
 
-## 2b. Extended model ----------------------------------------------------------
-
-formula_linear_ext = as.formula(paste("cart_hour_precise ~", paste(extended_terms, collapse = " + ")))
-
-linear_extended = tryCatch({
-  lm(formula_linear_ext, data = df)
-}, error = function(e) { message("  Extended linear model failed: ", e$message); NULL })
-
-if (!is.null(linear_extended)) {
-  coefs_linear_ext = tidy(linear_extended, conf.int = TRUE) |>
-    as.data.table() |>
-    fmutate(model = "extended_linear", site = site_lowercase)
-  
-  r2 = summary(linear_extended)$r.squared
-  adj_r2 = summary(linear_extended)$adj.r.squared
-  message("  R²: ", round(r2, 4), " | Adj R²: ", round(adj_r2, 4))
-}
-
 # ==============================================================================
 # COMBINE AND EXPORT
 # ==============================================================================
 
 message("\n== Exporting ==")
 
-# Combine all coefficient tables
 all_coefs = list()
-if (exists("coefs_core"))       all_coefs = c(all_coefs, list(coefs_core))
-if (exists("coefs_extended"))   all_coefs = c(all_coefs, list(coefs_extended))
+if (exists("coefs_core"))        all_coefs = c(all_coefs, list(coefs_core))
 if (exists("coefs_linear_core")) all_coefs = c(all_coefs, list(coefs_linear_core))
-if (exists("coefs_linear_ext")) all_coefs = c(all_coefs, list(coefs_linear_ext))
 
 if (length(all_coefs) > 0) {
   assignment_coefs = rbindlist(all_coefs, fill = TRUE)
-  save_output(assignment_coefs, "treatment_assignment_coefs", 
+  save_output(assignment_coefs, "treatment_assignment_coefs",
               shareable = TRUE, subfolder = "circadian")
   message("  Saved coefficient table")
 }
-
