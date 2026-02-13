@@ -398,12 +398,18 @@ site_summary = tidytable(
   n_bcma          = fsum(df$cart_target == "BCMA", na.rm = TRUE),
   n_severe_icaht  = fsum(df$severe_icaht_01, na.rm = TRUE),
   n_hlh           = fsum(df$hlh_01, na.rm = TRUE),
+  n_dead_90       = fsum(df$dead_90_01, na.rm = TRUE),
+  n_dead_365      = fsum(df$dead_365_01, na.rm = TRUE),
+  n_icu           = fsum(df$icu_30_01, na.rm = TRUE),
+  n_resp          = fsum(df$resp_30_01, na.rm = TRUE),
+  n_va            = fsum(df$va_30_01, na.rm = TRUE),
+  n_toci          = fsum(df$toci_any_30d, na.rm = TRUE),
+  n_anakinra      = fsum(df$anakinra_any_30d, na.rm = TRUE),
   date_min        = as.character(min(df$admin_dttm, na.rm = TRUE)),
   date_max        = as.character(max(df$admin_dttm, na.rm = TRUE))
 )
 
 save_output(site_summary, "site_summary", shareable = TRUE, subfolder = "trajectory")
-
 
 # ==============================================================================
 # CIRCADIAN PROJECT EXPORTS
