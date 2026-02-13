@@ -124,7 +124,7 @@ logistic_results = lapply(logistic_outcomes, \(o) {
   if (!o$var %in% names(df)) return(NULL)
   
   formula = as.formula(paste(
-    o$var, "~ trajectory_f + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f + baseline_lymphocytes_absolute"
+    o$var, "~ trajectory_f + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f"
   ))
   
   model = tryCatch(glm(formula, data = df, family = binomial), error = function(e) NULL)
@@ -143,7 +143,7 @@ write_artifact(logistic_coefs, "models", "logistic_coefs", site_lowercase)
 if ("pseudo_rmst_365" %in% names(df)) {
   
   rmst_model = tryCatch({
-    lm(pseudo_rmst_365 ~ trajectory_f + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f + baseline_lymphocytes_absolute,
+    lm(pseudo_rmst_365 ~ trajectory_f + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f,
        data = df)
   }, error = function(e) NULL)
   
@@ -182,7 +182,7 @@ for (target in c("CD19", "BCMA")) {
     
     # remove cart_target from model since we're stratified
     formula = as.formula(paste(
-      o$var, "~ trajectory_f + age + sex_f + race_eth_f + vw + easix_fc_f + year_f"
+      o$var, "~ trajectory_f + age + sex_f + race_eth_f + vw + log2_m_easix + year_f"
     ))
     
     model = tryCatch(glm(formula, data = df_sub, family = binomial), error = function(e) NULL)
@@ -201,7 +201,7 @@ for (target in c("CD19", "BCMA")) {
   # RMST
   if ("pseudo_rmst_365" %in% names(df_sub)) {
     rmst_sub = tryCatch({
-      lm(pseudo_rmst_365 ~ trajectory_f + age + sex_f + race_eth_f + vw + easix_fc_f + year_f,
+      lm(pseudo_rmst_365 ~ trajectory_f + age + sex_f + race_eth_f + vw + log2_m_easix + year_f,
          data = df_sub)
     }, error = function(e) NULL)
     
@@ -231,7 +231,7 @@ if (n_reassigned > 0) {
     if (!o$var %in% names(df)) return(NULL)
     
     formula = as.formula(paste(
-      o$var, "~ trajectory_reassign_f + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f"
+      o$var, "~ trajectory_reassign_f + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f"
     ))
     
     model = tryCatch(glm(formula, data = df, family = binomial), error = function(e) NULL)
@@ -254,7 +254,7 @@ if (n_reassigned > 0) {
   # RMST with reassigned
   if ("pseudo_rmst_365" %in% names(df)) {
     rmst_sens = tryCatch({
-      lm(pseudo_rmst_365 ~ trajectory_reassign_f + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f,
+      lm(pseudo_rmst_365 ~ trajectory_reassign_f + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f,
          data = df)
     }, error = function(e) NULL)
     
@@ -297,7 +297,7 @@ sens_collapsed_logistic = lapply(logistic_outcomes, \(o) {
   if (!o$var %in% names(df)) return(NULL)
   
   formula = as.formula(paste(
-    o$var, "~ trajectory_collapsed_f + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f"
+    o$var, "~ trajectory_collapsed_f + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f"
   ))
   
   model = tryCatch(glm(formula, data = df, family = binomial), error = function(e) NULL)
@@ -320,7 +320,7 @@ write_artifact(sens_collapsed_coefs, "sensitivity", "logistic_coefs", site_lower
 # RMST with collapsed
 if ("pseudo_rmst_365" %in% names(df)) {
   rmst_collapsed = tryCatch({
-    lm(pseudo_rmst_365 ~ trajectory_collapsed_f + age + sex_f + race_eth_f + cart_target_f + vw + easix_fc_f + year_f,
+    lm(pseudo_rmst_365 ~ trajectory_collapsed_f + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f,
        data = df)
   }, error = function(e) NULL)
   
