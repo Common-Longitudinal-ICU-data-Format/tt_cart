@@ -161,7 +161,7 @@ save_output(acute_summary, "table2_acute", shareable = TRUE, subfolder = "trajec
 med_outcome_vars <- c(
   "baseline_steroid", "toci_n_doses_30d", "anakinra_n_doses_30d", "steroid_days_30d",
   "apap_day_0", "apap_day_1", "apap_day_2", "apap_cum_0_2", "broad_spectrum_days",
-  "broad_anaerobe_days")
+  "broad_anaerobe_days", "ferritin_max_30d")
 
 med_outcomes_summary <-
   lapply(med_outcome_vars, \(v) {
