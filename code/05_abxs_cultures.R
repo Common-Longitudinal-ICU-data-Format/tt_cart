@@ -382,7 +382,6 @@ antimicrobials_raw =
   ) |>
   fsubset(med_class != "other")
 
-
 # baseline antimicrobials (24h before CAR-T) ===================================
 
 baseline_antimicrobials = 
@@ -543,7 +542,8 @@ df = join(df, broad_spectrum_days, on = "patient_id", how = "left", multiple = F
 df = join(df, broad_anaerobe_days, on = "patient_id", how = "left", multiple = FALSE)
 df$broad_spectrum_days = replace_na(df$broad_spectrum_days, 0L)
 df$broad_anaerobe_days = replace_na(df$broad_anaerobe_days, 0L)
-
+df$abx_30_01           = as.integer(df$broad_spectrum_days > 0)
+    
 rm(broad_spectrum_days, broad_anaerobe_days)
 gc()
 
