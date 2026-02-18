@@ -10,18 +10,20 @@ packages_to_install =
     "data.table",   
     "tidyverse", 
     "lubridate",
+    "comorbidity",
     "rprojroot",
     "tidytable",    
     "collapse",     
-    "janitor",      
+    "janitor", 
+    "pseudo",
     "readxl",       
     "arrow",        
-    "readr",        
+    "readr", 
+    "broom",
     "yaml",         
     "here",         
     "fst",          
-    "ps",
-    "comorbidity"
+    "ps"
   )
 
 packages_to_load = 
@@ -29,16 +31,14 @@ packages_to_load =
     "rprojroot",
     "data.table",
     "lubridate",
+    "comorbidity",
     "tidytable",    
     "collapse", 
     "stringr",
     "arrow",        
     "here",         
     "ps",
-    "dplyr",
     "rlang",
-    "comorbidity",
-    "tidyr"
   )
 
 fn_install_if_missing = function(p) {
@@ -118,7 +118,6 @@ message(
           ifelse(is.finite(avail_ram_gb), round(avail_ram_gb, 1), "NA"))
 )
 
-
 # site details =================================================================
 
 project_root = find_root(rprojroot::has_dir("config"))
@@ -183,7 +182,6 @@ start_date = with_tz(start_date, tz = "UTC")
 end_date   = with_tz(end_date,   tz = "UTC")
 today      = format(Sys.Date(), "%y%m%d")
 
-
 # helper functions =============================================================
 
 ## standardized save function --------------------------------------------------
@@ -229,7 +227,6 @@ standardize = function(x) {
   (x - fmean(x, na.rm = TRUE)) / fsd(x, na.rm = TRUE)
 }
 
-
 # clif tables needed for project ===============================================
 
 required_tables = 
@@ -272,9 +269,7 @@ if (length(missing_tables) > 0) {
   message("All required tables are present.")
 }
 
-rm(allowed_files, missing_tables)
-gc()
-
+rm(allowed_files, missing_tables); gc()
 
 # load tables ==================================================================
 
@@ -292,7 +287,6 @@ if (file_type == "parquet") {
 }
 
 names(data_list) = names(required_filenames)
-
 
 # validate table contents ======================================================
 
