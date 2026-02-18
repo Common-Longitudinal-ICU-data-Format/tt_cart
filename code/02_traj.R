@@ -112,11 +112,11 @@ temp_model_fit =
 
 df = join(df, temp_model_fit, how = "left")
 
-rm(temp_model, temp_model_fit); gc()
+rm(temp_model); gc()
 
-# ================================================================================
+# ==============================================================================
 # 24h vs 72h concordance analysis
-# ================================================================================
+# ==============================================================================
 
 ## fit trajectories using only 0-24h data -------------------------------------
 
@@ -226,7 +226,6 @@ if (fnrow(discordant) > 0) {
     fgroup_by(discordant, fit_flag_24h) |>
     fsummarize(n = fnobs(joined_hosp_id)) |>
     fungroup()
-  }
 
   # combined: discordant detail table
   discordant_detail = 
@@ -237,6 +236,7 @@ if (fnrow(discordant) > 0) {
     roworder(-n)
   
   save_output(discordant_detail, "concordance_24h_72h_discordant_detail", shareable = TRUE, subfolder = "trajectory")
+}
 
 ## summary table for export ----------------------------------------------------
 
@@ -254,8 +254,9 @@ concordance_summary = tidytable(
 
 save_output(concordance_summary, "concordance_24h_72h_summary", shareable = TRUE, subfolder = "trajectory")
 
-rm(temp_model_24h, temp_model_fit_24h, concordance, discordant, temp_model_fit,
+rm(temp_model_24h, temp_model_fit_24h, temp_model_fit, concordance, 
    concordance_crosstab, concordance_summary)
+if (exists("discordant"))        rm(discordant)
 if (exists("discordant_detail")) rm(discordant_detail)
 if (exists("disc_by_flag_72h"))  rm(disc_by_flag_72h)
 if (exists("disc_by_flag_24h"))  rm(disc_by_flag_24h)
