@@ -38,7 +38,7 @@ packages_to_load =
     "arrow",        
     "here",         
     "ps",
-    "rlang",
+    "rlang"
   )
 
 fn_install_if_missing = function(p) {
