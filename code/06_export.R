@@ -369,6 +369,27 @@ site_summary = tidytable(
   n_anakinra      = fsum(df$anakinra_any_30d, na.rm = TRUE),
   n_infection     = fsum(df$infection_overall_01, na.rm = TRUE),
   n_abx           = fsum(df$abx_30_01, na.rm = TRUE),
+  
+  # baseline medication prevalences
+  n_baseline_steroid    = fsum(df$baseline_steroid > 0, na.rm = TRUE),
+  n_baseline_infection  = fsum(df$infection_base_01, na.rm = TRUE),
+  n_steroid_72h         = fsum(df$steroid_any_72h, na.rm = TRUE),
+  
+  # follow-up adequacy
+  median_followup_d     = round(fmedian(df$followup_d, na.rm = TRUE), 1),
+  n_followup_90d        = fsum(df$followup_d >= 90, na.rm = TRUE),
+  n_followup_365d       = fsum(df$followup_d >= 365, na.rm = TRUE),
+  
+  # data completeness (key model variables)
+  pct_miss_trajectory   = round(100 * fsum(is.na(df$trajectory)) / fnrow(df), 1),
+  pct_miss_log2_m_easix = round(100 * fsum(is.na(df$log2_m_easix)) / fnrow(df), 1),
+  pct_miss_bl_ldh       = round(100 * fsum(is.na(df$baseline_ldh)) / fnrow(df), 1),
+  pct_miss_bl_crp       = round(100 * fsum(is.na(df$baseline_crp)) / fnrow(df), 1),
+  pct_miss_bl_ferritin  = round(100 * fsum(is.na(df$baseline_ferritin)) / fnrow(df), 1),
+  pct_miss_bl_creatinine = round(100 * fsum(is.na(df$baseline_creatinine)) / fnrow(df), 1),
+  pct_miss_bl_platelet  = round(100 * fsum(is.na(df$baseline_platelet_count)) / fnrow(df), 1),
+  pct_miss_vw           = round(100 * fsum(df$miss_vw == 1, na.rm = TRUE) / fnrow(df), 1),
+  
   date_min        = as.character(min(df$cart_t0, na.rm = TRUE)),
   date_max        = as.character(max(df$cart_t0, na.rm = TRUE))
 )
