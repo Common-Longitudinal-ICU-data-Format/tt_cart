@@ -406,7 +406,7 @@ req_vitals = c(
 req_labs = c(
   "crp", "wbc", "creatinine", "platelet_count",
   "lymphocytes_absolute", "ldh", "ferritin",
-  "hemoglobin", "neutrophils_absolute", "creatinine", 
+  "hemoglobin", "neutrophils_absolute",
   "alt", "ast", "bilirubin_total")
 
 validation_specs = list(

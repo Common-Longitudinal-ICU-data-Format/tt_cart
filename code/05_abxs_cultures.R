@@ -137,6 +137,17 @@ infection_base_flags =
     resp_base_01      = as.integer(infection_source == "respiratory"),
     other_inf_base_01 = as.integer(infection_source == "other")
   ) |>
+  fgroup_by(patient_id) |>
+  fsummarize(
+    bacterial_base_01 = max(bacterial_base_01, na.rm = TRUE),
+    viral_base_01     = max(viral_base_01, na.rm = TRUE),
+    fungal_base_01    = max(fungal_base_01, na.rm = TRUE),
+    infection_base_01 = max(infection_base_01, na.rm = TRUE),
+    blood_base_01     = max(blood_base_01, na.rm = TRUE),
+    urine_base_01     = max(urine_base_01, na.rm = TRUE),
+    resp_base_01      = max(resp_base_01, na.rm = TRUE),
+    other_inf_base_01 = max(other_inf_base_01, na.rm = TRUE)
+  ) |>
   fselect(patient_id, bacterial_base_01, viral_base_01, fungal_base_01, 
          infection_base_01, blood_base_01, urine_base_01, resp_base_01, 
          other_inf_base_01)
@@ -676,10 +687,10 @@ save_output(antimicrobial_day_traj_3_30d_summary, "antimicrobials_3_30d_by_traj"
 
 rm(antimicrobial_day_traj_3_30d, antimicrobial_day_traj_3_30d_summary, antimicrobial_day_traj_72h, antimicrobial_day_traj_72h_summary, 
 post_antibacterial_flag, combined_antimicrobial_day, combined_antimicrobial_day_72h, antimicrobials_raw, baseline_flags, 
-baseline_meds_by_patient, infection_fungal_daily, infection_bacterial_daily, infection_viral_daily)
+baseline_meds_by_patient)
 
 rm(anaerobic_abx, antibacterials, antifungals, antivirals, broad_spectrum_abx, lab_categories, 
-  prophylactic_abx, req_labs, req_vitals, required_tables, uln_alt, uln_ast, uln_bili, uln_cr, exclude_results, find_max_consecutive)
+  prophylactic_abx, exclude_results, find_max_consecutive)
     
 gc()
 

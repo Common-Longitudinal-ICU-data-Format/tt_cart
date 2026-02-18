@@ -75,7 +75,6 @@ cart =
 cart = join(hid_jid_crosswalk, cart, how = "inner") 
 
 cart_pids = funique(cart$patient_id)
-cart_hids = funique(cart$hospitalization_id)
 
 cart =
   fselect(cart, joined_hosp_id, admin_dttm, cart_name, cart_group) |>

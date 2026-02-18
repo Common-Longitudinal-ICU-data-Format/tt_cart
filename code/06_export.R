@@ -91,7 +91,7 @@ save_output(t1_continuous, "table1_continuous", shareable = TRUE, subfolder = "t
 ## categorical -----------------------------------------------------------------
 
 t1_cat_vars = c(
-  "sex_category", "race_eth", "dx_broad_final", "cart_target", "infusion_year",
+  "sex_category", "race_eth", "cancer_cat", "cart_target", "infusion_year",
   "hct_01", "dead_30_01", "dead_90_01", "dead_180_01", "dead_365_01", "easix_f_cat", 
   "easix_fc_cat", "miss_vw")
 
@@ -369,8 +369,8 @@ site_summary = tidytable(
   n_anakinra      = fsum(df$anakinra_any_30d, na.rm = TRUE),
   n_infection     = fsum(df$infection_overall_01, na.rm = TRUE),
   n_abx           = fsum(df$abx_30_01, na.rm = TRUE),
-  date_min        = as.character(min(df$admin_dttm, na.rm = TRUE)),
-  date_max        = as.character(max(df$admin_dttm, na.rm = TRUE))
+  date_min        = as.character(min(df$cart_t0, na.rm = TRUE)),
+  date_max        = as.character(max(df$cart_t0, na.rm = TRUE))
 )
 
 save_output(site_summary, "site_summary", shareable = TRUE, subfolder = "trajectory")
