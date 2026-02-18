@@ -188,6 +188,11 @@ today      = format(Sys.Date(), "%y%m%d")
 
 save_output = function(obj, name, shareable = FALSE, subfolder = NULL, format = "csv") {
   
+  # auto-tag shareable outputs with site identifier for pooling
+  if (shareable && !"site" %in% names(obj)) {
+    obj$site = site_lowercase
+  }
+  
   # base folder
   folder = if (shareable) "upload_to_box" else "intermediate_output"
   
