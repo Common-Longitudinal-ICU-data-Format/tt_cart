@@ -80,7 +80,7 @@ pcr =
   dplyr::filter(!is.na(collect_dttm)) |>
   dplyr::filter(!is.na(organism_group)) |>
   dplyr::filter(organism_group != "no_growth") |>
-  dplyr::filter(tolower(result_category) %!in% exclude_results) |>
+  dplyr::filter(!tolower(result_category) %in% exclude_results) |>
   dplyr::select(hospitalization_id, collect_dttm, result_dttm, fluid_category, organism_group, organism_category) |>
   dplyr::collect()
 
