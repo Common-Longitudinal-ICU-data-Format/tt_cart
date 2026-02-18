@@ -295,9 +295,7 @@ save_output(infection_outcomes_summary, "table2_infection_outcomes", shareable =
 
 # RMST pseudo-observations =====================================================
 
-if (requireNamespace("pseudo", quietly = TRUE)) {
-  
-  message("Calculating RMST pseudo-observations at 365 days...")
+message("Calculating RMST pseudo-observations at 365 days...")
   
   surv_time  = pmin(df$followup_d, 365, na.rm = TRUE)
   surv_event = fifelse(df$died == 1 & df$time_to_death <= 365, 1L, 0L)
