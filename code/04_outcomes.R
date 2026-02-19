@@ -49,7 +49,7 @@ all_hid_crosswalk =
   dplyr::select(patient_id, hospitalization_id) |>
   dplyr::collect()
 
-rm(cart_hids, cart_pids)
+rm(cart_pids)
 
 # ICU outcomes =================================================================
 
@@ -169,10 +169,10 @@ labs_raw =
   ) |>
   frename(lab_dttm = lab_result_dttm, lab_value = lab_value_numeric)
 
-##Baseline labs (day -1 to day 0, closest to infusion) ------------------------
+##Baseline labs (day -2 to day 0, closest to infusion) ------------------------
 
 baseline_labs = 
-  fsubset(labs_raw, lab_dttm >= cart_t0 - dhours(24) & lab_dttm <= cart_t0) |>
+  fsubset(labs_raw, lab_dttm >= cart_t0 - dhours(48) & lab_dttm <= cart_t0) |>
   fmutate(hours_before_cart = as.numeric(difftime(cart_t0, lab_dttm, units = "hours"))) |>
   roworder(patient_id, lab_category, hours_before_cart) |>
   fgroup_by(patient_id, lab_category) |>

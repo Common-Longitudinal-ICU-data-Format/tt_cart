@@ -10,18 +10,20 @@ packages_to_install =
     "data.table",   
     "tidyverse", 
     "lubridate",
+    "comorbidity",
     "rprojroot",
     "tidytable",    
     "collapse",     
-    "janitor",      
+    "janitor", 
+    "pseudo",
     "readxl",       
     "arrow",        
-    "readr",        
+    "readr", 
+    "broom",
     "yaml",         
     "here",         
     "fst",          
-    "ps",
-    "comorbidity"
+    "ps"
   )
 
 packages_to_load = 
@@ -29,16 +31,14 @@ packages_to_load =
     "rprojroot",
     "data.table",
     "lubridate",
+    "comorbidity",
     "tidytable",    
     "collapse", 
     "stringr",
     "arrow",        
     "here",         
     "ps",
-    "dplyr",
-    "rlang",
-    "comorbidity",
-    "tidyr"
+    "rlang"
   )
 
 fn_install_if_missing = function(p) {
@@ -118,7 +118,6 @@ message(
           ifelse(is.finite(avail_ram_gb), round(avail_ram_gb, 1), "NA"))
 )
 
-
 # site details =================================================================
 
 project_root = find_root(rprojroot::has_dir("config"))
@@ -183,12 +182,16 @@ start_date = with_tz(start_date, tz = "UTC")
 end_date   = with_tz(end_date,   tz = "UTC")
 today      = format(Sys.Date(), "%y%m%d")
 
-
 # helper functions =============================================================
 
 ## standardized save function --------------------------------------------------
 
 save_output = function(obj, name, shareable = FALSE, subfolder = NULL, format = "csv") {
+  
+  # auto-tag shareable outputs with site identifier for pooling
+  if (shareable && !"site" %in% names(obj)) {
+    obj$site = site_lowercase
+  }
   
   # base folder
   folder = if (shareable) "upload_to_box" else "intermediate_output"
@@ -228,7 +231,6 @@ safe_log2 = function(x) fifelse(!is.na(x) & x > 0, log2(x), NA_real_)
 standardize = function(x) {
   (x - fmean(x, na.rm = TRUE)) / fsd(x, na.rm = TRUE)
 }
-
 
 # clif tables needed for project ===============================================
 
@@ -272,9 +274,7 @@ if (length(missing_tables) > 0) {
   message("All required tables are present.")
 }
 
-rm(allowed_files, missing_tables)
-gc()
-
+rm(allowed_files, missing_tables); gc()
 
 # load tables ==================================================================
 
@@ -292,7 +292,6 @@ if (file_type == "parquet") {
 }
 
 names(data_list) = names(required_filenames)
-
 
 # validate table contents ======================================================
 
@@ -412,7 +411,7 @@ req_vitals = c(
 req_labs = c(
   "crp", "wbc", "creatinine", "platelet_count",
   "lymphocytes_absolute", "ldh", "ferritin",
-  "hemoglobin", "neutrophils_absolute", "creatinine", 
+  "hemoglobin", "neutrophils_absolute",
   "alt", "ast", "bilirubin_total")
 
 validation_specs = list(

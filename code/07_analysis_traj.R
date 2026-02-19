@@ -115,7 +115,7 @@ logistic_outcomes = list(
   list(name = "resp_30",         var = "resp_30_01"),
   list(name = "va_30",           var = "va_30_01"),
   list(name = "infection_30",    var = "infection_overall_01"),
-  list(name = "abx_30",          var = "abx_30d_01"),  
+  list(name = "abx_30",          var = "abx_30_01"),  
   list(name = "toci",            var = "toci_any_30d"),
   list(name = "anakinra",        var = "anakinra_any_30d")
 )

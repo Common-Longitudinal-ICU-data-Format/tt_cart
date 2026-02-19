@@ -140,6 +140,17 @@ infection_base_flags =
     resp_base_01      = as.integer(infection_source == "respiratory"),
     other_inf_base_01 = as.integer(infection_source == "other")
   ) |>
+  fgroup_by(patient_id) |>
+  fsummarize(
+    bacterial_base_01 = max(bacterial_base_01, na.rm = TRUE),
+    viral_base_01     = max(viral_base_01, na.rm = TRUE),
+    fungal_base_01    = max(fungal_base_01, na.rm = TRUE),
+    infection_base_01 = max(infection_base_01, na.rm = TRUE),
+    blood_base_01     = max(blood_base_01, na.rm = TRUE),
+    urine_base_01     = max(urine_base_01, na.rm = TRUE),
+    resp_base_01      = max(resp_base_01, na.rm = TRUE),
+    other_inf_base_01 = max(other_inf_base_01, na.rm = TRUE)
+  ) |>
   fselect(patient_id, bacterial_base_01, viral_base_01, fungal_base_01, 
           infection_base_01, blood_base_01, urine_base_01, resp_base_01, 
           other_inf_base_01)

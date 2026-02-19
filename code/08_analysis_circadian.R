@@ -87,7 +87,6 @@ df$trajectory_f  = factor(df$trajectory, levels = c("NT", "HT", "HFR", "HSR"))
 df$sex_f         = factor(df$sex_category)
 df$race_eth_f    = factor(df$race_eth, levels = c("nhw", "other"))
 df$cart_target_f = factor(df$cart_target, levels = c("CD19", "BCMA"))
-df$m_easix       = factor(df$log2_m_easix)
 df$year_f        = factor(df$infusion_year)
 
 ## early/late dichotomization --------------------------------------------------
@@ -255,13 +254,13 @@ write_artifact(surv_earlylate, "survival", "earlylate", site_lowercase)
 message("\n== Main models (continuous time) ==")
 
 logistic_outcomes = list(
-  list(name = "dead_90",   var = "dead_90_01"),
-  list(name = "dead_365",  var = "dead_365_01"),
-  list(name = "icu_30",    var = "icu_30_01"),
-  list(name = "resp_30",   var = "resp_30_01"),
-  list(name = "infection", var = "infection_overall_01"),
-  list(name = "toci",      var = "toci_any_30d"),
-  list(name = "anakinra",  var = "anakinra_any_30d")
+  list(name = "dead_90",   var = "dead_90_01",          min_fu = 90),
+  list(name = "dead_365",  var = "dead_365_01",         min_fu = 365),
+  list(name = "icu_30",    var = "icu_30_01",           min_fu = NULL),
+  list(name = "resp_30",   var = "resp_30_01",          min_fu = NULL),
+  list(name = "infection", var = "infection_overall_01", min_fu = NULL),
+  list(name = "toci",      var = "toci_any_30d",        min_fu = NULL),
+  list(name = "anakinra",  var = "anakinra_any_30d",    min_fu = NULL)
 )
 
 ## logistic: time (continuous) → outcomes --------------------------------------
@@ -270,11 +269,13 @@ logistic_results = lapply(logistic_outcomes, \(o) {
   
   if (!o$var %in% names(df)) return(NULL)
   
+  df_fit = if (!is.null(o$min_fu)) fsubset(df, followup_d >= o$min_fu) else df
+  
   formula = as.formula(paste(
     o$var, "~ cart_hour_precise + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f"
   ))
   
-  model = tryCatch(glm(formula, data = df, family = binomial), error = function(e) NULL)
+  model = tryCatch(glm(formula, data = df_fit, family = binomial), error = function(e) NULL)
   if (is.null(model)) return(NULL)
   
   safe_tidy_glm(model) |>
@@ -314,14 +315,16 @@ message("\n== Mediation analysis ==")
 ## logistic: total effect vs direct effect -------------------------------------
 
 mediation_outcomes = list(
-  list(name = "dead_90",  var = "dead_90_01"),
-  list(name = "dead_365", var = "dead_365_01"),
-  list(name = "anakinra", var = "anakinra_any_30d")
+  list(name = "dead_90",  var = "dead_90_01",       min_fu = 90),
+  list(name = "dead_365", var = "dead_365_01",      min_fu = 365),
+  list(name = "anakinra", var = "anakinra_any_30d", min_fu = NULL)
 )
 
 mediation_logistic = lapply(mediation_outcomes, \(o) {
   
   if (!o$var %in% names(df)) return(NULL)
+  
+  df_fit = if (!is.null(o$min_fu)) fsubset(df, followup_d >= o$min_fu) else df
   
   # total effect (no trajectory)
   formula_total = as.formula(paste(
@@ -333,8 +336,8 @@ mediation_logistic = lapply(mediation_outcomes, \(o) {
     o$var, "~ cart_hour_precise + trajectory_f + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f"
   ))
   
-  model_total = tryCatch(glm(formula_total, data = df, family = binomial), error = function(e) NULL)
-  model_direct = tryCatch(glm(formula_direct, data = df, family = binomial), error = function(e) NULL)
+  model_total = tryCatch(glm(formula_total, data = df_fit, family = binomial), error = function(e) NULL)
+  model_direct = tryCatch(glm(formula_direct, data = df_fit, family = binomial), error = function(e) NULL)
   
   if (is.null(model_total) || is.null(model_direct)) return(NULL)
   
@@ -409,11 +412,13 @@ for (target in c("CD19", "BCMA")) {
   sub_logistic = lapply(logistic_outcomes, \(o) {
     if (!o$var %in% names(df_sub)) return(NULL)
     
+    df_sub_fit = if (!is.null(o$min_fu)) fsubset(df_sub, followup_d >= o$min_fu) else df_sub
+    
     formula = as.formula(paste(
       o$var, "~ cart_hour_precise + age + sex_f + race_eth_f + vw + log2_m_easix + year_f"
     ))
     
-    model = tryCatch(glm(formula, data = df_sub, family = binomial), error = function(e) NULL)
+    model = tryCatch(glm(formula, data = df_sub_fit, family = binomial), error = function(e) NULL)
     if (is.null(model)) return(NULL)
     
     safe_tidy_glm(model) |>
@@ -465,11 +470,13 @@ for (sex in c("male", "female")) {
   sub_logistic = lapply(logistic_outcomes[1:3], \(o) {  # dead_90, dead_365, icu
     if (!o$var %in% names(df_sub)) return(NULL)
     
+    df_sub_fit = if (!is.null(o$min_fu)) fsubset(df_sub, followup_d >= o$min_fu) else df_sub
+    
     formula = as.formula(paste(
       o$var, "~ cart_hour_precise + age + race_eth_f + cart_target_f + vw + log2_m_easix + year_f"
     ))
     
-    model = tryCatch(glm(formula, data = df_sub, family = binomial), error = function(e) NULL)
+    model = tryCatch(glm(formula, data = df_sub_fit, family = binomial), error = function(e) NULL)
     if (is.null(model)) return(NULL)
     
     safe_tidy_glm(model) |>
@@ -514,12 +521,13 @@ cutpoints = c(12, 13, 14, 15, 16, 17)
 
 cutpoint_results = lapply(cutpoints, \(cp) {
   
-  df$early_cp = fifelse(df$cart_hour_precise < cp, 1L, 0L)
+  df_fit = fsubset(df, followup_d >= 90)
+  df_fit$early_cp = fifelse(df_fit$cart_hour_precise < cp, 1L, 0L)
   
   # 90-day mortality
   model = tryCatch({
     glm(dead_90_01 ~ early_cp + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f,
-        data = df, family = binomial)
+        data = df_fit, family = binomial)
   }, error = function(e) NULL)
   
   if (is.null(model)) return(NULL)
@@ -529,8 +537,8 @@ cutpoint_results = lapply(cutpoints, \(cp) {
     fsubset(term == "early_cp")
   
   coef_row$cutpoint = cp
-  coef_row$n_early = fsum(df$early_cp == 1, na.rm = TRUE)
-  coef_row$n_late = fsum(df$early_cp == 0, na.rm = TRUE)
+  coef_row$n_early = fsum(df_fit$early_cp == 1, na.rm = TRUE)
+  coef_row$n_late = fsum(df_fit$early_cp == 0, na.rm = TRUE)
   coef_row$site = site_lowercase
   coef_row
 })
@@ -559,6 +567,8 @@ mediation_collapsed_logistic = lapply(mediation_outcomes, \(o) {
   
   if (!o$var %in% names(df)) return(NULL)
   
+  df_fit = if (!is.null(o$min_fu)) fsubset(df, followup_d >= o$min_fu) else df
+  
   # total effect (no trajectory) - same as before
   formula_total = as.formula(paste(
     o$var, "~ cart_hour_precise + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f"
@@ -569,8 +579,8 @@ mediation_collapsed_logistic = lapply(mediation_outcomes, \(o) {
     o$var, "~ cart_hour_precise + trajectory_collapsed_f + age + sex_f + race_eth_f + cart_target_f + vw + log2_m_easix + year_f"
   ))
   
-  model_total = tryCatch(glm(formula_total, data = df, family = binomial), error = function(e) NULL)
-  model_direct = tryCatch(glm(formula_direct, data = df, family = binomial), error = function(e) NULL)
+  model_total = tryCatch(glm(formula_total, data = df_fit, family = binomial), error = function(e) NULL)
+  model_direct = tryCatch(glm(formula_direct, data = df_fit, family = binomial), error = function(e) NULL)
   
   if (is.null(model_total) || is.null(model_direct)) return(NULL)
   

@@ -91,19 +91,19 @@ expand_icd_range = function(base, subtypes) {
   unlist(lapply(paste0(base, ".", subtypes), expand_icd))
 }
 
-dx_groups <- list(
-  follicular         = expand_icd_range("C82", c("0","1","2","3","4","5","6","8","9")),
-  scbcl              = expand_icd("C83.0"),                
-  mantle_cell        = expand_icd("C83.1"),
-  dlbcl              = expand_icd("C83.3"),
-  lymphoblastic      = expand_icd("C83.5"),
-  burkitt            = expand_icd("C83.7"),
-  non_follicular_nos = expand_icd(c("C83.8","C83.9")),
-  nhl_nos            = c(expand_icd("C88.4"), expand_icd_range("C85", c("1","2","8","9"))),
-  myeloma            = expand_icd_range("C90", c("0","1","2","3")),
-  b_all              = c("C91.00","C91.01","C91.02"),
-  cll                = expand_icd(c("C91.10","C91.11","C91.12")),
-  hct                = c("Z94.81","Z94.84", paste0("T86.0", 0:3), "T86.09","T86.5")
+dx_groups = list(
+  myeloma      = expand_icd_range("C90", c("0", "1", "2", "3")),
+  dlbcl        = expand_icd("C83.3"),
+  follicular   = expand_icd_range("C82", c("0", "1", "2", "3", "4", "5", "6", "8", "9")),
+  mantle_cell  = expand_icd("C83.1"),
+  marginal     = expand_icd("C83.0"),
+  burkitt      = expand_icd("C83.7"),
+  other_nhl    = expand_icd(c("C83.5", "C83.8")),
+  nhl_nos      = expand_icd("C83.9"),
+  lymphoma_nos = c(expand_icd("C88.4"), expand_icd_range("C85", c("1", "2", "8", "9"))),
+  cll_sll      = expand_icd(c("C91.10", "C91.11", "C91.12")),
+  b_all        = c("C91.00", "C91.01", "C91.02"),
+  hct          = c("Z94.81", "Z94.84", paste0("T86.0", 0:3), "T86.09", "T86.5")
 )
 
 dx_lookup = 
@@ -126,18 +126,9 @@ hct_vec =
 ## determine primary cancer category -------------------------------------------
 
 lymphoma_priority = tidytable(
-  cancer_cat = c(
-    "dlbcl",
-    "mantle_cell",
-    "burkitt",
-    "lymphoblastic",
-    "follicular",
-    "scbcl",
-    "cll",
-    "non_follicular_nos",
-    "nhl_nos"
-  ),
-  lym_rank = 1L:9L
+  cancer_cat = c("dlbcl", "mantle_cell", "follicular", "marginal", 
+                 "burkitt", "cll_sll", "other_nhl", "nhl_nos", "lymphoma_nos"),
+  lym_rank   = 1L:9L
 )
 
 cart_indication = tidytable(
@@ -186,8 +177,7 @@ dx_primary =
   fsubset(indication_match) |>
   fselect(patient_id, cancer_cat)
 
-df = join(df, dx_primary, how = "left")
-
+df = join(df, dx_primary, how = "left") 
 
 df$hct_01 = as.integer(df$patient_id %in% hct_vec)
 
@@ -200,12 +190,22 @@ df$cancer_cat = case_when(
   TRUE                                           ~ "unknown"
 )
 
-df$dx_broad_final = case_when(
-  df$cancer_cat %in% c("myeloma", "b_all", "unknown") ~ df$cancer_cat,
-  TRUE                                     ~ "lymphoma"
-)
-  
-rm(dx_primary, dx_with_cart, cart_indication, hct_vec, dx_cancer, dx_lookup, dx_groups, lymphoma_priority, expand_icd, expand_icd_range, hids_of_interest)
+## collapse to clinically meaningful groups ------------------------------------
+
+df = data.table(df)
+
+df[, cancer_cat := fcase(
+  cancer_cat %in% c("dlbcl", "burkitt", "other_nhl", "nhl_nos", "lymphoma_nos"), "aggressive_nhl",
+  cancer_cat == "mantle_cell",                  "mantle_cell",
+  cancer_cat %in% c("follicular", "marginal", "cll_sll"), "indolent_nhl",
+  cancer_cat == "b_all",                        "b_all",
+  cancer_cat == "myeloma",                      "myeloma",
+  cancer_cat == "unknown",                      "unknown"
+)]
+
+rm(dx_primary, dx_with_cart, cart_indication)
+rm(hct_vec, dx_cancer, dx_lookup, dx_groups, lymphoma_priority)
+rm(expand_icd, expand_icd_range, hids_of_interest)
 gc()
 
 # elixhauser comorbidities =====================================================

@@ -91,7 +91,7 @@ save_output(t1_continuous, "table1_continuous", shareable = TRUE, subfolder = "t
 ## categorical -----------------------------------------------------------------
 
 t1_cat_vars = c(
-  "sex_category", "race_eth", "dx_broad_final", "cart_target", "infusion_year",
+  "sex_category", "race_eth", "cancer_cat", "cart_target", "infusion_year",
   "hct_01", "dead_30_01", "dead_90_01", "dead_180_01", "dead_365_01", "easix_f_cat", 
   "easix_fc_cat", "miss_vw")
 
@@ -295,9 +295,7 @@ save_output(infection_outcomes_summary, "table2_infection_outcomes", shareable =
 
 # RMST pseudo-observations =====================================================
 
-if (requireNamespace("pseudo", quietly = TRUE)) {
-  
-  message("Calculating RMST pseudo-observations at 365 days...")
+message("Calculating RMST pseudo-observations at 365 days...")
   
   surv_time  = pmin(df$followup_d, 365, na.rm = TRUE)
   surv_event = fifelse(df$died == 1 & df$time_to_death <= 365, 1L, 0L)
@@ -372,8 +370,29 @@ site_summary = tidytable(
   n_anakinra      = fsum(df$anakinra_any_30d, na.rm = TRUE),
   n_infection     = fsum(df$infection_overall_01, na.rm = TRUE),
   n_abx           = fsum(df$abx_30_01, na.rm = TRUE),
-  date_min        = as.character(min(df$admin_dttm, na.rm = TRUE)),
-  date_max        = as.character(max(df$admin_dttm, na.rm = TRUE))
+  
+  # baseline medication prevalences
+  n_baseline_steroid    = fsum(df$baseline_steroid > 0, na.rm = TRUE),
+  n_baseline_infection  = fsum(df$infection_base_01, na.rm = TRUE),
+  n_steroid_72h         = fsum(df$steroid_any_72h, na.rm = TRUE),
+  
+  # follow-up adequacy
+  median_followup_d     = round(fmedian(df$followup_d, na.rm = TRUE), 1),
+  n_followup_90d        = fsum(df$followup_d >= 90, na.rm = TRUE),
+  n_followup_365d       = fsum(df$followup_d >= 365, na.rm = TRUE),
+  
+  # data completeness (key model variables)
+  pct_miss_trajectory   = round(100 * fsum(is.na(df$trajectory)) / fnrow(df), 1),
+  pct_miss_log2_m_easix = round(100 * fsum(is.na(df$log2_m_easix)) / fnrow(df), 1),
+  pct_miss_bl_ldh       = round(100 * fsum(is.na(df$baseline_ldh)) / fnrow(df), 1),
+  pct_miss_bl_crp       = round(100 * fsum(is.na(df$baseline_crp)) / fnrow(df), 1),
+  pct_miss_bl_ferritin  = round(100 * fsum(is.na(df$baseline_ferritin)) / fnrow(df), 1),
+  pct_miss_bl_creatinine = round(100 * fsum(is.na(df$baseline_creatinine)) / fnrow(df), 1),
+  pct_miss_bl_platelet  = round(100 * fsum(is.na(df$baseline_platelet_count)) / fnrow(df), 1),
+  pct_miss_vw           = round(100 * fsum(df$miss_vw == 1, na.rm = TRUE) / fnrow(df), 1),
+  
+  date_min        = as.character(min(df$cart_t0, na.rm = TRUE)),
+  date_max        = as.character(max(df$cart_t0, na.rm = TRUE))
 )
 
 save_output(site_summary, "site_summary", shareable = TRUE, subfolder = "trajectory")
