@@ -312,7 +312,8 @@ message("Calculating RMST pseudo-observations at 365 days...")
   }
   
   df$pseudo_rmst_365 = pseudo_vals
-  
+
+}
 
 # misclassification sensitivity ================================================
 
