@@ -30,7 +30,7 @@ message("\n", paste(rep("-", 40), collapse = ""), "\n")
 source("code/04_outcomes.R")
 message("\n", paste(rep("-", 40), collapse = ""), "\n")
 
-source("code/05_easix.R")
+source("code/05_abxs_cultures.R")
 message("\n", paste(rep("-", 40), collapse = ""), "\n")
 
 source("code/06_export.R")

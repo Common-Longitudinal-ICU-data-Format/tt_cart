@@ -80,9 +80,12 @@ pcr =
   dplyr::filter(!is.na(collect_dttm)) |>
   dplyr::filter(!is.na(organism_group)) |>
   dplyr::filter(organism_group != "no_growth") |>
-  dplyr::filter(tolower(result_category) %!in% exclude_results) |>
-  dplyr::select(hospitalization_id, collect_dttm, result_dttm, fluid_category, organism_group, organism_category) |>
-  dplyr::collect()
+  dplyr::select(hospitalization_id, collect_dttm, 
+                result_dttm, fluid_category, 
+                organism_group, organism_category,
+                result_category) |>
+  dplyr::collect() |>
+  dplyr::filter(!tolower(result_category) %in% exclude_results)
 
 pcr = 
   join(pcr, all_hid_crosswalk, on = "hospitalization_id", how = "inner", multiple = TRUE) |>
@@ -99,7 +102,7 @@ infection <- dplyr::bind_rows(cultures, pcr)
 
 rm(cultures, pcr)
 gc()
-    
+
 ##Classify organism type and infection location
 
 infection <- infection |>
@@ -118,8 +121,8 @@ infection <- infection |>
                                      "skin_unspecified", "skin_rash_pustules_abscesses", 
                                      "skin_disseminated_multiple_sites", "central_nervous_system", 
                                      "brain", "meninges_csf", "spinal_cord","other_unspecified")        ~ "other",
-                                     TRUE                                                               ~ "other"))
-                                                            
+      TRUE                                                               ~ "other"))
+
 #Deduplicate infections
 infection <- infection |> dplyr::distinct(patient_id, d_since_cart, fluid_category, organism_category, .keep_all = TRUE)
 
@@ -138,8 +141,8 @@ infection_base_flags =
     other_inf_base_01 = as.integer(infection_source == "other")
   ) |>
   fselect(patient_id, bacterial_base_01, viral_base_01, fungal_base_01, 
-         infection_base_01, blood_base_01, urine_base_01, resp_base_01, 
-         other_inf_base_01)
+          infection_base_01, blood_base_01, urine_base_01, resp_base_01, 
+          other_inf_base_01)
 
 infection_72h_flags =
   infection |>
@@ -235,7 +238,7 @@ df = df |>
   fmutate(
     infection_overall_01 = as.integer(
       fcoalesce(infection_72h_01, 0L) == 1L |
-      fcoalesce(infection_3_30d_01, 0L) == 1L))
+        fcoalesce(infection_3_30d_01, 0L) == 1L))
 
 rm(infection_base_flags, infection_72h_flags, infection_3_30d_flags)
 gc()
@@ -417,7 +420,7 @@ baseline_broad =
   fgroup_by(patient_id) |>
   fsummarize(baseline_broad_spectrum_01 = as.integer(any(med_class == "antibacterial" & is_broad_spectrum == 1L)),
              baseline_anaerobe_01       = as.integer(any(med_class == "antibacterial" & is_broad_anaerobe == 1L))
-             ) |>
+  ) |>
   fungroup()
 
 baseline_flags = 
@@ -491,7 +494,7 @@ post_antibacterial_flag =
     abx_in_baseline = mapply(function(m, lst) m %in% lst, med_lc, baseline_abx_list),
     new_abx = as.integer(baseline_antibacterial_meds == "" | !abx_in_baseline),
     abx_01 = as.integer(med_class == "antibacterial")
-    )
+  )
 
 ##identify total days on antimicrobial----------------------------------
 
@@ -543,7 +546,7 @@ df = join(df, broad_anaerobe_days, on = "patient_id", how = "left", multiple = F
 df$broad_spectrum_days = replace_na(df$broad_spectrum_days, 0L)
 df$broad_anaerobe_days = replace_na(df$broad_anaerobe_days, 0L)
 df$abx_30_01           = as.integer(df$broad_spectrum_days > 0)
-    
+
 rm(broad_spectrum_days, broad_anaerobe_days)
 gc()
 
@@ -610,8 +613,8 @@ combined_antimicrobial_day <-
       ~ tidyr::replace_na(.x, 0L)))
 
 rm(abx_patient_day, abx_patient_day_3_30d, abx_patient_day_72h, antifungal_patient_day, antifungal_patient_day_3_30d, 
-antifungal_patient_day_72h, antiviral_patient_day, antiviral_patient_day_3_30d, antiviral_patient_day_72h, post_antibacterial, 
-post_antifungal, post_antiviral)
+   antifungal_patient_day_72h, antiviral_patient_day, antiviral_patient_day_3_30d, antiviral_patient_day_72h, post_antibacterial, 
+   post_antifungal, post_antiviral)
 gc()
 
 # antimicrobial trends by trajectory ===========================================
@@ -644,7 +647,7 @@ antimicrobial_day_traj_72h_summary <-
     n_patients_anaerobe    = fsum(broad_anaerobe_01, na.rm = TRUE),
     n_patients_ppx         = fsum(prophylactic_01, na.rm = TRUE),
     n_patients_new_abx     = fsum(new_abx_01, na.rm = TRUE),
-  
+    
     n_patients_af          = fsum(antifungal_01, na.rm = TRUE),
     n_patients_av          = fsum(antiviral_01, na.rm = TRUE),
     n_patients_abx_esc     = fsum(abx_escalation_01, na.rm = TRUE),
@@ -675,12 +678,13 @@ save_output(antimicrobial_day_traj_72h_summary,   "antimicrobials_72h_by_traj", 
 save_output(antimicrobial_day_traj_3_30d_summary, "antimicrobials_3_30d_by_traj",    shareable = TRUE, subfolder = "trajectory")
 
 rm(antimicrobial_day_traj_3_30d, antimicrobial_day_traj_3_30d_summary, antimicrobial_day_traj_72h, antimicrobial_day_traj_72h_summary, 
-post_antibacterial_flag, combined_antimicrobial_day, combined_antimicrobial_day_72h, antimicrobials_raw, baseline_flags, 
-baseline_meds_by_patient, infection_fungal_daily, infection_bacterial_daily, infection_viral_daily)
+   post_antibacterial_flag, combined_antimicrobial_day, combined_antimicrobial_day_72h, antimicrobials_raw, baseline_flags, 
+   baseline_meds_by_patient, infection_fungal_daily, infection_bacterial_daily, infection_viral_daily)
 
 rm(anaerobic_abx, antibacterials, antifungals, antivirals, broad_spectrum_abx, lab_categories, 
-  prophylactic_abx, req_labs, req_vitals, required_tables, uln_alt, uln_ast, uln_bili, uln_cr, exclude_results, find_max_consecutive)
-    
+   prophylactic_abx, req_labs, req_vitals, required_tables, uln_alt, uln_ast, uln_bili, uln_cr, exclude_results, find_max_consecutive)
+
 gc()
 
+message("05_abxs_cultures.R complete.")
 

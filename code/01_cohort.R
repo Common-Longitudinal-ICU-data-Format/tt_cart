@@ -280,7 +280,7 @@ save_output(exclusions, "exclusion_flow", shareable = TRUE, subfolder = "traject
 
 # add time of day (local) ======================================================
 
-df$admin_localtime   = with_tz(df$admin_dttm, tz = tz_local)
+df$admin_localtime   = with_tz(df$cart_t0, tz = tz_local)
 df$cart_hour_precise = hour(df$admin_localtime) + minute(df$admin_localtime)/60
 df$cart_hour_floor   = floor(df$cart_hour_precise)
 df$cart_hour_round   = round(df$cart_hour_precise)

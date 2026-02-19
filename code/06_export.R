@@ -314,7 +314,8 @@ if (requireNamespace("pseudo", quietly = TRUE)) {
   }
   
   df$pseudo_rmst_365 = pseudo_vals
-  
+
+}
 
 # misclassification sensitivity ================================================
 
