@@ -298,8 +298,9 @@ message("Calculating RMST pseudo-observations at 365 days...")
   surv_time  = pmin(df$followup_d, 365, na.rm = TRUE)
   surv_event = fifelse(df$died == 1 & df$time_to_death <= 365, 1L, 0L)
   
-  valid_idx = !is.na(surv_time) & !is.na(surv_event)
-  pseudo_vals = rep(NA_real_, nrow(df))
+# new
+valid_idx = !is.na(surv_time) & !is.na(surv_event) & surv_time >= 0
+pseudo_vals = rep(NA_real_, nrow(df))
   
   if (sum(valid_idx) > 10) {
     pseudo_vals[valid_idx] = pseudo::pseudomean(
