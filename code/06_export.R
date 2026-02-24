@@ -15,9 +15,9 @@ message("Starting 06_export.R")
 
 # derived variables ============================================================
 
-# new
 df = df |>
   fmutate(
+    # everyone observed until death or end_date (from 00_setup.R)
     followup_end = fifelse(!is.na(death_dttm), death_dttm, end_date),
     followup_d   = as.numeric(difftime(followup_end, cart_t0, units = "days")),
     died         = as.integer(!is.na(time_to_death)),
@@ -298,9 +298,8 @@ message("Calculating RMST pseudo-observations at 365 days...")
   surv_time  = pmin(df$followup_d, 365, na.rm = TRUE)
   surv_event = fifelse(df$died == 1 & df$time_to_death <= 365, 1L, 0L)
   
-# new
-valid_idx = !is.na(surv_time) & !is.na(surv_event) & surv_time >= 0
-pseudo_vals = rep(NA_real_, nrow(df))
+  valid_idx = !is.na(surv_time) & !is.na(surv_event) & surv_time >= 0
+  pseudo_vals = rep(NA_real_, nrow(df))
   
   if (sum(valid_idx) > 10) {
     pseudo_vals[valid_idx] = pseudo::pseudomean(
