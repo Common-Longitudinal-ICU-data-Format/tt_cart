@@ -15,12 +15,10 @@ message("Starting 06_export.R")
 
 # derived variables ============================================================
 
-data_end_date = ymd("2024-12-31")
-
 df = df |>
   fmutate(
-    # everyone observed until death or 12/31/24
-    followup_end = fifelse(!is.na(death_dttm), death_dttm, as.POSIXct(data_end_date)),
+    # everyone observed until death or end_date (from 00_setup.R)
+    followup_end = fifelse(!is.na(death_dttm), death_dttm, end_date),
     followup_d   = as.numeric(difftime(followup_end, cart_t0, units = "days")),
     died         = as.integer(!is.na(time_to_death)),
     
@@ -300,7 +298,7 @@ message("Calculating RMST pseudo-observations at 365 days...")
   surv_time  = pmin(df$followup_d, 365, na.rm = TRUE)
   surv_event = fifelse(df$died == 1 & df$time_to_death <= 365, 1L, 0L)
   
-  valid_idx = !is.na(surv_time) & !is.na(surv_event)
+  valid_idx = !is.na(surv_time) & !is.na(surv_event) & surv_time >= 0
   pseudo_vals = rep(NA_real_, nrow(df))
   
   if (sum(valid_idx) > 10) {
