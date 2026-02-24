@@ -15,12 +15,10 @@ message("Starting 06_export.R")
 
 # derived variables ============================================================
 
-data_end_date = ymd("2024-12-31")
-
+# new
 df = df |>
   fmutate(
-    # everyone observed until death or 12/31/24
-    followup_end = fifelse(!is.na(death_dttm), death_dttm, as.POSIXct(data_end_date)),
+    followup_end = fifelse(!is.na(death_dttm), death_dttm, end_date),
     followup_d   = as.numeric(difftime(followup_end, cart_t0, units = "days")),
     died         = as.integer(!is.na(time_to_death)),
     
