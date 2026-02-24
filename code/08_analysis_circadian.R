@@ -341,11 +341,11 @@ mediation_logistic = lapply(mediation_outcomes, \(o) {
   
   if (is.null(model_total) || is.null(model_direct)) return(NULL)
   
-  total_coefs = tidy(model_total, exponentiate = TRUE, conf.int = TRUE) |>
+  total_coefs = safe_tidy_glm(model_total) |>
     as.data.table() |>
     fmutate(outcome = o$name, site = site_lowercase, n = nobs(model_total), effect = "total")
   
-  direct_coefs = tidy(model_direct, exponentiate = TRUE, conf.int = TRUE) |>
+  direct_coefs = safe_tidy_glm(model_direct) |>
     as.data.table() |>
     fmutate(outcome = o$name, site = site_lowercase, n = nobs(model_direct), effect = "direct")
   
@@ -584,11 +584,11 @@ mediation_collapsed_logistic = lapply(mediation_outcomes, \(o) {
   
   if (is.null(model_total) || is.null(model_direct)) return(NULL)
   
-  total_coefs = tidy(model_total, exponentiate = TRUE, conf.int = TRUE) |>
+  total_coefs = safe_tidy_glm(model_total) |>
     as.data.table() |>
     fmutate(outcome = o$name, site = site_lowercase, n = nobs(model_total), effect = "total", variant = "hfr_collapsed")
   
-  direct_coefs = tidy(model_direct, exponentiate = TRUE, conf.int = TRUE) |>
+  direct_coefs = safe_tidy_glm(model_direct) |>
     as.data.table() |>
     fmutate(
       term = gsub("trajectory_collapsed_f", "trajectory_f", term),
