@@ -50,7 +50,7 @@ fungal_organisms = c(
   "trichophyton_rubrum", "trichophyton_sp", "trichophyton_tonsurans", "trichosporon_asahii",
   "trichosporon_sp", "yeast")
 
-exclude_results = c("not_detected", "indeterminate")
+exclude_results = c("not_detected", "indeterminate", "indeterminant", "negative")
 
 ## Load culture data -----------------------------------------------------------
 
