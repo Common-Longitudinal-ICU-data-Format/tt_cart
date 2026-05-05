@@ -237,35 +237,7 @@ exclusions = rbind(
 rm(no_temp_24h, no_temp_death, no_temp_other, n_before_temp, has_temp_24h)
 gc()
 
-
-# exclusion 2: febrile in 12h prior to infusion ================================
-
-febrile_before = 
-  fsubset(temp, temp_c >= 38) |>
-  fsubset(recorded_dttm < cart_t0) |>
-  fsubset(recorded_dttm >= cart_t0 - dhours(12)) |>
-  fselect(joined_hosp_id) |>
-  funique()
-
-n_before_febrile = fnrow(df)
-n_febrile = sum(df$joined_hosp_id %in% febrile_before$joined_hosp_id)
-
-df = fsubset(df, !joined_hosp_id %in% febrile_before$joined_hosp_id)
-
-exclusions = rbind(
-  exclusions,
-  tidytable(
-    step        = "2",
-    reason      = "febrile within 12h pre-infusion",
-    n_excluded  = n_febrile,
-    n_remaining = fnrow(df)
-  )
-)
-
-rm(febrile_before, n_febrile, n_before_febrile); gc()
-
 # finalize exclusions and filter temp ==========================================
-
 ## keep only temp for included patients ----------------------------------------
 
 temp = fsubset(temp, joined_hosp_id %in% df$joined_hosp_id)
