@@ -255,7 +255,7 @@ rm(infection_base_flags, infection_72h_flags, infection_3_30d_flags)
 gc()
 
 ## Daily infection summaries by trajectory -----------------------------------
-#Overall prevalence of infection at 3-30 days by type and source
+#Overall prevalence of infection at 0-30 days by type and source
 infection_bacterial_daily <-
   infection |>
   join(df |> fselect(patient_id, trajectory), on = "patient_id", how = "inner", multiple = FALSE) |>
@@ -300,8 +300,20 @@ infection_daily <-
 
 save_output(infection_daily, "infection_daily_by_trajectory", shareable = TRUE, subfolder = "trajectory")
 
+## Organisms cultured by trajectory (0-30 days post-CAR-T) ----------------------------------------------
+bugs_by_trajectory <-
+  infection |>
+  join(df |> fselect(patient_id, trajectory),
+       on = "patient_id", how = "inner", multiple = FALSE) |>
+  fsubset(collect_dttm >= cart_t0 & collect_dttm <= cart_t0 + ddays(30)) |>
+  fgroup_by(trajectory, organism_category) |>
+  fsummarize(n_patients = fndistinct(patient_id)) |>
+  fungroup() |>
+  roworder(trajectory, -n_patients)
 
-rm(infection, infection_bacterial_daily, infection_viral_daily, infection_fungal_daily, fungal_organisms, viral_organisms)
+save_output(bugs_by_trajectory, "bugs_by_trajectory", shareable = TRUE, subfolder = "trajectory")
+
+rm(infection, infection_bacterial_daily, infection_viral_daily, infection_fungal_daily, fungal_organisms, viral_organisms, bugs_by_trajectory)
 gc()
 
 ##Antimicrobial exposure
