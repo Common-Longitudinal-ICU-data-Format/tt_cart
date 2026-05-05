@@ -177,7 +177,7 @@ rm(output_dirs)
 ## dates -----------------------------------------------------------------------
 
 start_date = ymd_hms("2018-01-01 00:00:00", tz = tz_local) 
-end_date   = ymd_hms("2024-12-31 23:59:59", tz = tz_local)
+end_date   = ymd_hms("2025-12-31 23:59:59", tz = tz_local)
 start_date = with_tz(start_date, tz = "UTC") 
 end_date   = with_tz(end_date,   tz = "UTC")
 today      = format(Sys.Date(), "%y%m%d")
