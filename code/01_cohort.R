@@ -69,7 +69,7 @@ cart =
       TRUE                                     ~ NA_integer_
     )
   ) |>
-  dplyr::filter(!is.na(cart_group))
+  dplyr::filter(!is.na(cart_group)) |>
   dplyr::distinct(hospitalization_id, admin_dttm, cart_name, cart_group) |>
   dplyr::collect()
 
