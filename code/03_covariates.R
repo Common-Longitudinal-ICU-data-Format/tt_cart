@@ -184,11 +184,19 @@ df$hct_01 = as.integer(df$patient_id %in% hct_vec)
 ## fill in missing cancer_cat based on cart product ----------------------------
 
 df$cancer_cat = case_when(
-  !is.na(df$cancer_cat)                          ~ df$cancer_cat,
   df$cart_name == "ciltacabtagene_autoleucel"    ~ "myeloma",
   df$cart_name == "idecabtagene_vicleucel"       ~ "myeloma",
+  !is.na(df$cancer_cat)                          ~ df$cancer_cat,
   TRUE                                           ~ "unknown"
 )
+
+## safety check: myeloma cancer_cat only valid for myeloma-approved products ---
+
+df$cancer_cat = fifelse(
+  df$cancer_cat == "myeloma" & 
+    !df$cart_name %in% c("ciltacabtagene_autoleucel", "idecabtagene_vicleucel"),
+  "unknown",
+  df$cancer_cat)
 
 ## collapse to clinically meaningful groups ------------------------------------
 
