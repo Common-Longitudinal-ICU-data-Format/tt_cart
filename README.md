@@ -73,7 +73,7 @@ This project requires the following CLIF 2.1 tables. Ensure all listed fields ar
 | Table | Required Fields |
 |-------|-----------------|
 | **patient** | `patient_id`, `race_category`, `ethnicity_category`, `sex_category`, `death_dttm` |
-| **hospitalization** | `patient_id`, `hospitalization_id`, `age_at_admission`, `admission_dttm`, `discharge_dttm` |
+| **hospitalization** | `patient_id`, `hospitalization_id`, `age_at_admission`, `admission_dttm`, `discharge_dttm`, `discharge_category` |
 | **adt** | `hospitalization_id`, `location_category`, `in_dttm`, `out_dttm` |
 | **vitals** | `hospitalization_id`, `vital_category`, `vital_value`, `recorded_dttm` |
 | **labs** | `hospitalization_id`, `lab_category`, `lab_value`, `lab_result_dttm` |
@@ -81,24 +81,32 @@ This project requires the following CLIF 2.1 tables. Ensure all listed fields ar
 | **medication_admin_intermittent** | `hospitalization_id`, `med_group`, `med_category`, `admin_dttm` |
 | **respiratory_support** | `hospitalization_id`, `device_category`, `recorded_dttm` |
 | **microbiology_culture** | `hospitalization_id`, `result_dttm`, `fluid_category`, `organism_category` |
+| **microbiology_nonculture** | `hospitalization_id`, `collect_dttm`, `result_dttm`, `method_category`, `result_category`, `organism_category` |
+| **hospital_diagnosis** | `hospitalization_id` |
 
 ### Required Values Within Tables
 
 **vitals.vital_category**:
 - `temp_c` (required for trajectory assignment)
-- `heart_rate`, `respiratory_rate`, `sbp`, `dbp`, `map`, `spo2`, `weight_kg`, `height_cm`
+- `heart_rate`, `respiratory_rate`, `map`, `spo2`, `weight_kg`, `height_cm`
 
 **labs.lab_category**:
 - `creatinine`, `platelet_count`, `lymphocytes_absolute`, `wbc` (required for EASIX)
 - `ldh`, `crp`, `ferritin` (required for baseline labs)
 - `hemoglobin`, `neutrophils_absolute` (required for hematotoxicity/ICAHT)
+- `ast`, `alt`, `bilirubin_total`
 
 **medication_admin_continuous.med_group**:
 - `vasoactives` (with med_category: norepinephrine, vasopressin, epinephrine, phenylephrine, etc.)
 
 **medication_admin_intermittent.med_group**:
 - `car_t` (required for cohort identification)
-- `steroid`, `tocilizumab`, `anakinra` (required for outcomes)
+- `analgesia`, `steroid` (required for outcomes)
+
+Note: tocilizumab and anakinra are also used downstream for CRS/ICANS proxies. Specific antibiotic are used 
+to classify broad-spectrum exposure. The setup script does not strictly validate their presence under med_group,
+but they should be available in medication_admin_intermittent (typically as
+med_category values).
 
 **respiratory_support.device_category**:
 - `IMV`, `NIPPV`, `High Flow NC`, etc.
@@ -111,15 +119,18 @@ This project requires the following CLIF 2.1 tables. Ensure all listed fields ar
 ## Cohort Definition
 
 ### Inclusion Criteria
-- Adult patients (≥18 years) admitted to the hospital between 2018–2024
-- Received CD19 or BCMA targeted CAR-T therapy infusion (identified via `medication_admin_intermittent` where `med_group = 'car_t'`)
-- Documented normal temperature (≥35°C and <38°C) within 4 hours prior to CAR-T infusion
+- Adult patients (≥18 years) admitted to the hospital between 2018–2025
+- Received CD19 or BCMA targeted CAR-T therapy infusion (identified via `medication_admin_intermittent` where `med_group = 'car_t'`), restricted to recognized CAR-T agents:
+`axicabtagene ciloleucel`, `brexucabtagene autoleucel`, `ciltacabtagene autoleucel`, `idecabtagene vicleucel`, `lisocabtagene maraleucel`, `tisagenlecleucel`
 - At least 24 hours of recorded temperatures following infusion
 
 ### Exclusion Criteria
 - Patients discharged within 24 hours of CAR-T infusion
 - Patients who died within 24 hours of CAR-T infusion
 - Insufficient temperature data for trajectory assignment
+
+### Hospitalization Linking
+Contiguous hospitalization_id records for the same patient separated by ≤ 6 hours (discharge-to-readmission gap) are linked into a single joined_hosp_id for analysis. This handles transfers and brief inter-encounter gaps without losing post-infusion follow-up.
 
 ---
 
@@ -131,6 +142,7 @@ After running the full pipeline, you will find outputs in:
 
 | File Pattern | Description |
 |--------------|-------------|
+| `exclusion_flow-{site}.csv` | Cohort exclusion flow counts (from 01_cohort.R) |
 | `diagnostics-overall-{site}.csv` | Site-level summary statistics |
 | `diagnostics-by_trajectory-{site}.csv` | N and outcome counts by trajectory |
 | `table1-continuous-{site}.csv` | Continuous covariates by trajectory (n, sum, sum_sq) |
@@ -222,15 +234,19 @@ Trajectory assignment uses group-based trajectory modeling (via `lcmm` package) 
 
 ---
 
-## Package Dependencies
+### Package Dependencies
+00_setup.R will attempt to install missing packages automatically. Key dependencies:
 
-The pipeline will attempt to install missing packages automatically. Key dependencies:
+Data manipulation: `tidytable`, `collapse`, `data.table`, `tidyverse`, `arrow`, `janitor`
+Trajectory modeling: `lcmm`
+Survival / pseudo-observations: `pseudo`
+Comorbidity scoring: `comorbidity`
+Model output: `broom`
+Configuration / paths: `yaml`, `rprojroot`, `here`
+I/O: `readr`, `readxl`, `fst`, `arrow`
+System / threading: `ps`, `lubridate`, `stringr`, `rlang`
 
-- Data manipulation: `tidytable`, `collapse`, `data.table`, `arrow`
-- Trajectory modeling: `lcmm`
-- Survival analysis: `pseudo`, `survival`
-- Model output: `broom`
-- Configuration: `yaml`, `rprojroot`
+The setup script auto-tunes thread counts based on detected cores and available RAM.
 
 ---
 
@@ -252,6 +268,9 @@ The pipeline will attempt to install missing packages automatically. Key depende
 - Check that all required tables exist in your `tables_location`
 - Verify table names match CLIF 2.1 conventions
 - Run `00_setup.R` to see validation output
+
+### "Validation errors found"
+- The setup script will list, per table, which required variables or category values are missing. Fix the underlying CLIF table or mapping and re-run 00_setup.R.
 
 ---
 
