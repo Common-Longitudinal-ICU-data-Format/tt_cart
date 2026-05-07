@@ -46,22 +46,21 @@ project_location: ""
 
 ### 3. Run the Pipeline
 
-Run scripts in order from within the RStudio project:
+Run scripts in order from within the RStudio project. Scripts must run sequentially in a single R session (objects are passed in memory).
 
 ```r
-source("code/00_setup.R")
-source("code/01_cohort.R")
-source("code/02_traj.R")
-source("code/03_covariates.R")
-source("code/04_outcomes.R")
-source("code/05_easix.R")
-source("code/06_export.R")
+source("code/00_setup.R")               # packages, validation, helpers
+source("code/01_cohort.R")              # cohort identification + exclusions
+source("code/02_traj.R")                # temperature trajectory assignment
+source("code/03_covariates.R")          # demographics, diagnoses, comorbidities
+source("code/04_outcomes.R")            # death, ICU, labs, ICAHT, IEC-HLH, EASIX, meds
+source("code/05_abxs_cultures.R")       # infections + antimicrobial exposure
+source("code/06_export.R")              # final assembly + Table 1 / Table 2 exports
 
 # Analysis scripts (run after 00-06)
-source("code/07_analysis_traj.R")     # Trajectory paper
+source("code/07_analysis_traj.R")      # Trajectory paper
 source("code/08_analysis_circadian.R") # Circadian paper
 ```
-
 ---
 
 ## Required CLIF Tables and Fields
@@ -76,13 +75,13 @@ This project requires the following CLIF 2.1 tables. Ensure all listed fields ar
 | **hospitalization** | `patient_id`, `hospitalization_id`, `age_at_admission`, `admission_dttm`, `discharge_dttm`, `discharge_category` |
 | **adt** | `hospitalization_id`, `location_category`, `in_dttm`, `out_dttm` |
 | **vitals** | `hospitalization_id`, `vital_category`, `vital_value`, `recorded_dttm` |
-| **labs** | `hospitalization_id`, `lab_category`, `lab_value`, `lab_result_dttm` |
+| **labs** | `hospitalization_id`, `lab_category`, `lab_value`, `lab_value_numeric`, `lab_result_dttm` |
 | **medication_admin_continuous** | `hospitalization_id`, `med_group`, `med_category`, `admin_dttm` |
-| **medication_admin_intermittent** | `hospitalization_id`, `med_group`, `med_category`, `admin_dttm` |
+| **medication_admin_intermittent** | `hospitalization_id`, `med_group`, `med_category`, `admin_dttm`, `med_dose`, `med_dose_unit` |
 | **respiratory_support** | `hospitalization_id`, `device_category`, `recorded_dttm` |
-| **microbiology_culture** | `hospitalization_id`, `result_dttm`, `fluid_category`, `organism_category` |
-| **microbiology_nonculture** | `hospitalization_id`, `collect_dttm`, `result_dttm`, `method_category`, `result_category`, `organism_category` |
-| **hospital_diagnosis** | `hospitalization_id` |
+| **microbiology_culture** | `hospitalization_id`, `organism_id`, `collect_dttm`, `result_dttm`, `fluid_category`, `organism_category`, `organism_group` |
+| **microbiology_nonculture** | `hospitalization_id`, `collect_dttm`, `result_dttm`, `method_category`, `result_category`, `organism_category`, `organism_group` |
+| **hospital_diagnosis** | `hospitalization_id`, `diagnosis_code`|
 
 ### Required Values Within Tables
 
@@ -91,10 +90,10 @@ This project requires the following CLIF 2.1 tables. Ensure all listed fields ar
 - `heart_rate`, `respiratory_rate`, `map`, `spo2`, `weight_kg`, `height_cm`
 
 **labs.lab_category**:
-- `creatinine`, `platelet_count`, `lymphocytes_absolute`, `wbc` (required for EASIX)
-- `ldh`, `crp`, `ferritin` (required for baseline labs)
+- `creatinine`, `platelet_count`, `lymphocytes_absolute`, `wbc` (required for EASIX scores)
+- `ldh`, `crp`, `ferritin` (required for baseline labs and EASIX scores)
 - `hemoglobin`, `neutrophils_absolute` (required for hematotoxicity/ICAHT)
-- `ast`, `alt`, `bilirubin_total`
+- `ast`, `alt`, `bilirubin_total` (required for IEC-HLH organ-dysfunction criteria)
 
 **medication_admin_continuous.med_group**:
 - `vasoactives` (with med_category: norepinephrine, vasopressin, epinephrine, phenylephrine, etc.)
@@ -103,11 +102,9 @@ This project requires the following CLIF 2.1 tables. Ensure all listed fields ar
 - `car_t` (required for cohort identification)
 - `analgesia`, `steroid` (required for outcomes)
 
-Note: tocilizumab and anakinra are also used downstream for CRS/ICANS proxies. Specific antibiotic are used 
-to classify broad-spectrum exposure. The setup script does not strictly validate their presence under med_group,
-but they should be available in medication_admin_intermittent (typically as
-med_category values).
-
+Note: `med_group` value used downstream but not strictly validated: `CMS_sepsis_qualifying_antibiotics` (used in 05_abxs_cultures.R)
+      `med_category` values used downstream but not strictly validated: `tocilizumab`, `anakinra` (used for toxicity outcomes)  
+      
 **respiratory_support.device_category**:
 - `IMV`, `NIPPV`, `High Flow NC`, etc.
 
@@ -119,10 +116,10 @@ med_category values).
 ## Cohort Definition
 
 ### Inclusion Criteria
-- Adult patients (≥18 years) admitted to the hospital between 2018–2025
+- Adult patients (≥18 years) admitted to the hospital between 2018–2025 (can include narrower range if certain years unavailable)
 - Received CD19 or BCMA targeted CAR-T therapy infusion (identified via `medication_admin_intermittent` where `med_group = 'car_t'`), restricted to recognized CAR-T agents:
 `axicabtagene ciloleucel`, `brexucabtagene autoleucel`, `ciltacabtagene autoleucel`, `idecabtagene vicleucel`, `lisocabtagene maraleucel`, `tisagenlecleucel`
-- At least 24 hours of recorded temperatures following infusion
+- At least 24 hours of in-hospital follow-up and recorded temperatures after infusion
 
 ### Exclusion Criteria
 - Patients discharged within 24 hours of CAR-T infusion
@@ -133,7 +130,6 @@ med_category values).
 Contiguous hospitalization_id records for the same patient separated by ≤ 6 hours (discharge-to-readmission gap) are linked into a single joined_hosp_id for analysis. This handles transfers and brief inter-encounter gaps without losing post-infusion follow-up.
 
 ---
-
 ## Expected Outputs
 
 After running the full pipeline, you will find outputs in:
@@ -142,13 +138,31 @@ After running the full pipeline, you will find outputs in:
 
 | File Pattern | Description |
 |--------------|-------------|
-| `exclusion_flow-{site}.csv` | Cohort exclusion flow counts (from 01_cohort.R) |
+| `exclusion_flow-{site}.csv` | Cohort exclusion flow counts |
+| `concordance_24h_72h_summary_{site}_{date}.csv` | 24h-vs-72h trajectory concordance summary |
+| `concordance_24h_72h_crosstab_{site}_{date}.csv` | 24h × 72h trajectory cross-tabulation |
+| `concordance_24h_72h_discordant_detail_{site}_{date}.csv` | Discordant-case detail (when n > 0) |
+| `fig_temp_by_trajectory_{site}_{date}.csv` | Hourly temperature aggregates by trajectory |
+| `fig_temp_by_product_{site}_{date}.csv` | Hourly temperature aggregates by CAR-T product |
+| `lab_trends_mean_by_trajectory_{site}__{date}.csv`| Daily mean lab aggregates by trajectory (days 0–30) |
+| `lab_trends_nadir_by_trajectory_{site}_{date}.csv` | Daily nadir lab aggregates by trajectory (days 0–30) |
+| `meds_daily_by_trajectory_{site}_{date}.csv` | Daily tocilizumab / anakinra / steroid (dex-eq) by trajectory |
+| `infection_daily_by_trajectory_{site}_{date}.csv` | Daily counts of bacterial / viral / fungal infections by trajectory |
+| `bugs_by_trajectory_{site}_{date}.csv` | Distinct organisms cultured per trajectory (0–30 d) |
+| `antimicrobials_baseline_by_traj_{site}_{date}.csv` | Baseline antimicrobial exposure by trajectory |
+| `antimicrobials_72h_by_traj_{site}_{date}.csv` | Daily antimicrobial flags days 0–2 by trajectory |
+| `antimicrobials_3_30d_by_traj_{site}_{date}.csv` | Daily antimicrobial flags days 3–30 by trajectory |
 | `diagnostics-overall-{site}.csv` | Site-level summary statistics |
 | `diagnostics-by_trajectory-{site}.csv` | N and outcome counts by trajectory |
+| `site_summary_{site}_{date}.csv` | Site-level diagnostics and missingness|
 | `table1-continuous-{site}.csv` | Continuous covariates by trajectory (n, sum, sum_sq) |
 | `table1-categorical-{site}.csv` | Categorical covariates by trajectory (counts) |
-| `table2-binary-{site}.csv` | Binary outcomes by trajectory (n, n_events) |
-| `table2-time-{site}.csv` | Time-to-event variables by trajectory |
+| `table2_acute_{site}_{date}.csv` | Acute binary outcomes by trajectory |
+| `table2_medication_outcomes_{site}_{date}.csv` | Medication dose / count outcomes by trajectory |
+| `table2_nadir_{site}_{date}.csv` | ANC / Plt / Hgb / ALC nadir aggregates by trajectory |
+| `table2_grade_distributions_{site}_{date}.csv` | ICAHT, neutropenia, anemia, thrombocytopenia grade distributions |
+| `table2_time_{site}_{date}.csv` | LOS, hours-to-toci, hours-to-anakinra by trajectory |
+| `table2_infection_outcomes_{site}_{date}.csv` | Infection outcomes by trajectory (baseline / 72 h / 3–30 d windows) |
 | `survival-q30d-{site}.csv` | Survival data at 30-day intervals for KM curves |
 | `models-logistic_coefs-{site}.csv` | Logistic regression coefficients (main analysis) |
 | `models-rmst_coefs-{site}.csv` | RMST pseudo-regression coefficients |
@@ -184,16 +198,19 @@ After running the full pipeline, you will find outputs in:
 
 ## Temperature Trajectories
 
-Patients are assigned to one of four temperature trajectory groups based on their temperature patterns during the first 72 hours post-infusion:
-
+Patients are assigned to one of four temperature trajectory groups based on hourly temperature data during the first 24 and 72 hours post-infusion:
 | Trajectory | Description |
 |------------|-------------|
-| **NT** (Normothermic) | Temperatures remain near normal throughout |
-| **HT** (Hypothermic) | Temperatures trend below normal |
-| **HFR** (Hyperthermic Fast-Resolver) | Early fever that resolves quickly |
-| **HSR** (Hyperthermic Slow-Resolver) | Prolonged fever or delayed resolution |
+| **NT** | `Normothermic`, Temperatures remain near normal throughout |
+| **HT** | `Hypothermic`, Temperatures trend below normal |
+| **HFR** | `Hyperthermic Fast-Resolver`, Early fever that resolves quickly |
+| **HSR** | `Hyperthermic Slow-Resolver`, Prolonged fever or delayed resolution |
 
-Trajectory assignment uses group-based trajectory modeling (via `lcmm` package) fit to hourly temperature data.
+Assignment is performed in 02_traj.R by computing the sum of squared errors (SSE) between each patient's standardized hourly temperatures and four pre-specified polynomial reference curves (one per trajectory). Each patient is assigned to the trajectory with the lowest SSE. The second-best trajectory and a relative margin (margin_rel = (sse_second − sse_best) / sse_best) are retained; patients with margin_rel < 0.10 are flagged as borderline for sensitivity analyses.
+
+02_traj.R also performs a 24h-vs-72h concordance analysis, repeating the SSE-based assignment using only the first 24 hours of data and comparing to the 72 h assignment. Pooled outputs include the cross-tabulation, the discordant-case detail table, and a site-level concordance summary.
+
+Note: you may have no patients assigned to HFR group and that is not unexpected
 
 ---
 
@@ -207,12 +224,14 @@ Trajectory assignment uses group-based trajectory modeling (via `lcmm` package) 
 - ICU admission within 30 days
 - Invasive mechanical ventilation within 30 days
 - Vasoactive support within 30 days
-- Bloodstream infection within 30 days
+- Index hospital length of stay
 - Tocilizumab administration (CRS proxy)
 - Anakinra administration (ICANS proxy)
-- Corticosteroid administration within 72 hours
+- Corticosteroid administration (toxicity proxy)
 - Severe hematotoxicity (ICAHT grade ≥3)
-- Hyperferritinemia (≥10,000 ng/mL)
+- Hyperferritinemia
+- IEC-HLH composite
+- Infections within 30 days
 
 ---
 
@@ -238,7 +257,6 @@ Trajectory assignment uses group-based trajectory modeling (via `lcmm` package) 
 00_setup.R will attempt to install missing packages automatically. Key dependencies:
 
 Data manipulation: `tidytable`, `collapse`, `data.table`, `tidyverse`, `arrow`, `janitor`
-Trajectory modeling: `lcmm`
 Survival / pseudo-observations: `pseudo`
 Comorbidity scoring: `comorbidity`
 Model output: `broom`
