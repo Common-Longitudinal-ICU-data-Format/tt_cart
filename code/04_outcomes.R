@@ -124,13 +124,7 @@ resp_flag =
 df$resp_30_01 = as.integer(df$patient_id %in% resp_flag)
 df$imv_30_01  = as.integer(df$patient_id %in% imv_flag)
 df$va_30_01   = as.integer(df$patient_id %in% vaso_flag)
-
-df$icu_30_01 = case_when(
-  df$patient_id %in% icu_flag ~ 1L,
-  df$resp_30_01 == 1L         ~ 1L,
-  df$va_30_01   == 1L         ~ 1L,
-  TRUE                        ~ 0L
-)
+df$icu_30_01  = as.integer(df$patient_id %in% icu_flag)
 
 rm(vaso_flag, resp_flag, imv_flag, icu_flag)
 gc()
@@ -373,87 +367,92 @@ if (length(hlh_eligible) > 0) {
   # Calculate criterion flags for each lab measurement
   hlh_labs = hlh_labs |>
     fmutate(
-      # Liver dysfunction: >5x ULN or >5x baseline
+      # Liver dysfunction: >5x ULN if baseline normal or missing, >5x baseline if baseline abnormal
       liver_alt = case_when(
-        lab_category == "alt" & lab_value > 5 * uln_alt ~ 1L,
-        lab_category == "alt" & !is.na(baseline_alt) & lab_value > 5 * baseline_alt ~ 1L,
-        TRUE ~ 0L
+        lab_category != "alt"                         ~ 0L,
+        !is.na(baseline_alt) & baseline_alt > uln_alt ~ as.integer(lab_value > 5 * baseline_alt),
+        TRUE                                          ~ as.integer(lab_value > 5 * uln_alt)
       ),
       liver_ast = case_when(
-        lab_category == "ast" & lab_value > 5 * uln_ast ~ 1L,
-        lab_category == "ast" & !is.na(baseline_ast) & lab_value > 5 * baseline_ast ~ 1L,
-        TRUE ~ 0L
+        lab_category != "ast"                         ~ 0L,
+        !is.na(baseline_ast) & baseline_ast > uln_ast ~ as.integer(lab_value > 5 * baseline_ast),
+        TRUE                                          ~ as.integer(lab_value > 5 * uln_ast)
       ),
       liver_bili = case_when(
-        lab_category == "bilirubin_total" & lab_value > 5 * uln_bili ~ 1L,
-        lab_category == "bilirubin_total" & !is.na(baseline_bilirubin_total) & 
-          lab_value > 5 * baseline_bilirubin_total ~ 1L,
-        TRUE ~ 0L
+        lab_category != "bilirubin_total"                                ~ 0L,
+        !is.na(baseline_bilirubin_total) & baseline_bilirubin_total > uln_bili ~ as.integer(lab_value > 5 * baseline_bilirubin_total),
+        TRUE                                                             ~ as.integer(lab_value > 5 * uln_bili)
       ),
       liver_flag = pmax(liver_alt, liver_ast, liver_bili, na.rm = TRUE),
       
-      # Renal dysfunction: >3x ULN or >3x baseline
+      # Renal dysfunction: >3x ULN if baseline normal or missing, >3x baseline if baseline abnormal
       renal_flag = case_when(
-        lab_category == "creatinine" & lab_value > 3 * uln_cr ~ 1L,
-        lab_category == "creatinine" & !is.na(baseline_creatinine) & 
-          lab_value > 3 * baseline_creatinine ~ 1L,
-        TRUE ~ 0L
+        lab_category != "creatinine"                               ~ 0L,
+        !is.na(baseline_creatinine) & baseline_creatinine > uln_cr ~ as.integer(lab_value > 3 * baseline_creatinine),
+        TRUE                                                       ~ as.integer(lab_value > 3 * uln_cr)
       ),
       
       # Cytopenia flags (will aggregate later)
       hgb_low   = fifelse(lab_category == "hemoglobin" & lab_value < 8, 1L, 0L),
       plt_low   = fifelse(lab_category == "platelet_count" & lab_value < 50, 1L, 0L),
-      anc_low   = fifelse(lab_category == "neutrophils_absolute" & lab_value < 500, 1L, 0L)
-    )
+      anc_low   = fifelse(lab_category == "neutrophils_absolute" & lab_value < 0.5, 1L, 0L),
+     # Ferritin anchor: ferritin >= 10,000 on this day
+     ferr_high = fifelse(lab_category == "ferritin" & lab_value >= 10000, 1L, 0L)
+  )
   
-  # For each patient-day, determine if criteria are met
-  hlh_daily = 
-    hlh_labs |>
-    fgroup_by(patient_id, d_since_cart) |>
-    fsummarize(
-      liver_crit = fmax(liver_flag, na.rm = TRUE),
-      renal_crit = fmax(renal_flag, na.rm = TRUE),
-      hgb_crit   = fmax(hgb_low, na.rm = TRUE),
-      plt_crit   = fmax(plt_low, na.rm = TRUE),
-      anc_crit   = fmax(anc_low, na.rm = TRUE)
-    ) |>
-    fungroup() |>
-    fmutate(
-      # Cytopenia in ≥2 lineages
-      cytopenia_lineages = hgb_crit + plt_crit + anc_crit,
-      cytopenia_crit = as.integer(cytopenia_lineages >= 2))
+# For each patient-day, determine if criteria are met
+ hlh_daily = 
+  hlh_labs |>
+  fgroup_by(patient_id, d_since_cart) |>
+  fsummarize(
+    liver_crit = fmax(liver_flag, na.rm = TRUE),
+    renal_crit = fmax(renal_flag, na.rm = TRUE),
+    hgb_crit   = fmax(hgb_low, na.rm = TRUE),
+    plt_crit   = fmax(plt_low, na.rm = TRUE),
+    anc_crit   = fmax(anc_low, na.rm = TRUE),
+    ferr_crit  = fmax(ferr_high, na.rm = TRUE)
+  ) |>
+  fungroup() |>
+  fmutate(
+    # Cytopenia in ≥2 lineages
+    cytopenia_lineages = hgb_crit + plt_crit + anc_crit,
+    cytopenia_crit = as.integer(cytopenia_lineages >= 2))
   
-  # Look for concurrent criteria 
-  # For each day, check if ≥2 criteria met within that day ± 3 days
-  hlh_windows = 
-    hlh_daily |>
-    as.data.table() |>
-    setorder(patient_id, d_since_cart)
-  
-  # For each patient, find if any 3-day window has ≥2 criteria
-  hlh_result = hlh_windows[, {
-    max_criteria_3d = 0L
-    hlh_met = 0L
-    
-    if (.N > 0) {
-      for (i in seq_len(.N)) {
-        day_i = d_since_cart[i]
-        window = d_since_cart >= (day_i - 1) & d_since_cart <= (day_i + 1)
-        
-        # Check if criteria are met in this window
-        liver_in_window = any(liver_crit[window] == 1, na.rm = TRUE)
-        renal_in_window = any(renal_crit[window] == 1, na.rm = TRUE)
-        cyto_in_window  = any(cytopenia_crit[window] == 1, na.rm = TRUE)
-        
-        criteria_in_window = sum(liver_in_window, renal_in_window, cyto_in_window)
-        max_criteria_3d = max(max_criteria_3d, criteria_in_window)
-      }
-      hlh_met = as.integer(max_criteria_3d >= 2)
-    }
-    
-    .(hlh_criteria_met = hlh_met, max_concurrent_criteria = max_criteria_3d)
-  }, by = patient_id]
-  
+ # Look for concurrent criteria anchored to ferritin
+ # For each day, check the window day ± 1 (3 days): HLH requires ferritin >= 10,000
+ # in the window AND >= 2 of liver, renal, cytopenia in the same window
+ hlh_windows = 
+   hlh_daily |>
+   as.data.table() |>
+   setorder(patient_id, d_since_cart)
+ 
+ hlh_result = hlh_windows[, {
+   max_criteria_3d = 0L
+   hlh_met = 0L
+   
+   if (.N > 0) {
+     for (i in seq_len(.N)) {
+       day_i = d_since_cart[i]
+       window = d_since_cart >= (day_i - 1) & d_since_cart <= (day_i + 1)
+       
+       # Only windows containing a ferritin >= 10,000 count
+       ferr_in_window = any(ferr_crit[window] == 1, na.rm = TRUE)
+       if (!ferr_in_window) next
+       
+       liver_in_window = any(liver_crit[window] == 1, na.rm = TRUE)
+       renal_in_window = any(renal_crit[window] == 1, na.rm = TRUE)
+       cyto_in_window  = any(cytopenia_crit[window] == 1, na.rm = TRUE)
+       
+       criteria_in_window = sum(liver_in_window, renal_in_window, cyto_in_window)
+       max_criteria_3d = max(max_criteria_3d, criteria_in_window)
+     }
+     hlh_met = as.integer(max_criteria_3d >= 2)
+   }
+   
+   .(hlh_criteria_met = hlh_met, max_concurrent_criteria = max_criteria_3d)
+ }, by = patient_id]
+ 
+ 
   # Combine with ferritin data
   hlh_final = 
     join(ferritin_hlh, as_tidytable(hlh_result), on = "patient_id", how = "left") |>
