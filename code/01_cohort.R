@@ -143,7 +143,6 @@ exclusions = rbind(
   exclusions
 )
 
-
 # exclusion 1: < 24h in-hospital post-cart =====================================
 
 df$time_to_dc = as.numeric(difftime(df$discharge_dttm, df$cart_t0), "hours")
